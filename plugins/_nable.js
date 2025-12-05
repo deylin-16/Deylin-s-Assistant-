@@ -136,15 +136,6 @@ const handler = async (m, { conn, usedPrefix, command, args, isOwner, isAdmin, i
       isEnable = chat.delete = !chat.delete;
       break;
 
-    case 'jadibotmd':
-    case 'modejadibot':
-      isAll = true;
-      if (!isOwner) {
-        global.dfail('rowner', m, conn);
-        throw false;
-      }
-      isEnable = bot.jadibotmd = !bot.jadibotmd;
-      break;
 
     case 'detect':
     case 'configuraciones':
