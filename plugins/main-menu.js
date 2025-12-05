@@ -46,11 +46,6 @@ let handler = async (m, { conn, usedPrefix: _p }) => {
     let totalreg = Object.keys(global.db.data.users).length
     let uptime = clockString(process.uptime() * 1000)
 
-    const users = [...new Set(
-      (global.conns || []).filter(conn =>
-        conn.user && conn.ws?.socket?.readyState !== ws.CLOSED
-      )
-    )]
 
     let help = Object.values(global.plugins).filter(plugin => !plugin.disabled).map(plugin => ({
       help: Array.isArray(plugin.help) ? plugin.help : (plugin.help ? [plugin.help] : []),
@@ -67,7 +62,6 @@ let handler = async (m, { conn, usedPrefix: _p }) => {
 ┃ ✎ Usuarios: ${totalreg}
 ┃ ✎ Uptime: ${uptime}
 ┃ ✎ Comandos: ${totalCommands}
-┃ ✎ Sub-Bots: ${users.length}
 ╰━━━━━━━━━━━━━━━━━━━━━⌬
 
 ${emoji} 𝐋𝐈𝐒𝐓𝐀 𝐃𝐄 𝐂𝐎𝐌𝐀𝐍𝐃𝐎𝐒↷↷
