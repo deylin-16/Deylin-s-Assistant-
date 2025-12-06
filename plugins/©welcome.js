@@ -9,11 +9,10 @@ export async function before(m, { conn, participants, groupMetadata }) {
     let img = 'https://i.ibb.co/Psj3rJmR/Texto-del-p-rrafo-20251206-140954-0000.png'
     const chat = global.db?.data?.chats?.[m.chat] || {}
 
-    // 1. Detección de eventos: ADD o JOIN
+    // Lógica de detección corregida
     const isWelcomeEvent = m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_ADD || 
                            m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_JOIN;
                            
-    // Usamos chat.welcome para que /welcome off funcione
     if (isWelcomeEvent && chat.welcome !== false) {
 
         let ppGroup = null 
@@ -25,7 +24,6 @@ export async function before(m, { conn, participants, groupMetadata }) {
 
         const mentionListText = `@${who.split("@")[0]}` 
         
-        // Usa el mensaje personalizado guardado por tu handler.js
         let welcomeText = chat.customWelcome || "Bienvenido/a al grupo @user"
         
         welcomeText = welcomeText.replace(/\\n/g, '\n')
@@ -36,7 +34,6 @@ export async function before(m, { conn, participants, groupMetadata }) {
                 mentions: [who]
             }
 
-            // 2. Lógica de imagen: Garantiza una URL (resuelve TypeError)
             if (typeof ppGroup === 'string' && ppGroup.length > 0) {
                  messageOptions.image = { url: ppGroup }
                  messageOptions.caption = finalCaption
@@ -49,7 +46,6 @@ export async function before(m, { conn, participants, groupMetadata }) {
 
         } catch (e) {
             
-            // 3. Reporte de error al chat
             const errorMsg = `❌ FALLO AL ENVIAR BIENVENIDA:\nError: ${e.name}: ${e.message}\nVerifica que el bot sea Administrador.`
             
             console.error("ERROR AL ENVIAR BIENVENIDA:", e)
