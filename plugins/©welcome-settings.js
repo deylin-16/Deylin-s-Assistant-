@@ -1,8 +1,6 @@
 const { areJidsSameUser } = await import('@whiskeysockets/baileys')
 
 let handler = async (m, { conn, text, command, isAdmin, isGroup }) => {
-    if (!isGroup) return m.reply("❌ Este comando solo funciona en grupos.")
-    if (!isAdmin) return m.reply("❌ Solo los administradores pueden configurar la bienvenida.")
 
     let chat = global.db.data.chats[m.chat] || {}
 
