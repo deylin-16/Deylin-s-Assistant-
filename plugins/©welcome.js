@@ -9,7 +9,6 @@ async function sendBatchedWelcome(conn, jid) {
     const users = batch.users
     const chat = global.db?.data?.chats?.[jid] || {}
 
-    // Intenta obtener la foto de perfil del grupo
     let ppGroup = null
     try {
         ppGroup = await conn.profilePictureUrl(jid, 'image')
@@ -30,12 +29,12 @@ async function sendBatchedWelcome(conn, jid) {
             mentions: users
         }
 
-        // CONTROL ESTRICTO DE IMAGEN/TEXTO: Solo envía imagen si es una cadena de texto válida (URL)
+        // SOLUCIÓN AL ERROR DE IMAGEN: Solo se intenta enviar como imagen si tenemos una URL válida.
         if (typeof ppGroup === 'string' && ppGroup.length > 0) {
             messageOptions.image = { url: ppGroup }
             messageOptions.caption = finalCaption
         } else {
-            // Envía solo TEXTO (soluciona el ERR_INVALID_ARG_TYPE)
+            // Se envía solo como texto si la foto de perfil no existe o no se pudo obtener.
             messageOptions.text = finalCaption
         }
 
@@ -56,10 +55,11 @@ export async function before(m, { conn }) {
 
     const chat = global.db?.data?.chats?.[m.chat] || {}
 
-    // Escucha eventos de adición directa (ADD) y de aprobación de solicitudes (JOIN)
+    // DETECCIÓN DE EVENTOS: Incluye el evento de adición y el de unión/aprobación.
     const isWelcomeEvent = m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_ADD || 
                            m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_JOIN;
                            
+    // La bienvenida está activa a menos que se haya desactivado explícitamente.
     if (isWelcomeEvent && chat.welcome !== false) {
 
         conn.welcomeBatch = conn.welcomeBatch || {}
