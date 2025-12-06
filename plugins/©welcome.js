@@ -7,13 +7,17 @@ export async function before(m, { conn }) {
 
     const chat = global.db?.data?.chats?.[m.chat] || {}
 
+    // Detección de Eventos: Incluye Adición Directa (ADD) y Aprobación/Unión (JOIN)
     const isWelcomeEvent = m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_ADD || 
                            m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_JOIN;
                            
-    if (isWelcomeEvent && chat.welcome !== false) {
+    // CONDICIÓN FORZADA: Si se detecta el evento de entrada, ¡ejecutar la bienvenida!
+    if (isWelcomeEvent) {
 
         const mentionListText = `@${who.split("@")[0]}` 
-        let welcomeText = chat.customWelcome || "bienvenido al grupo @user"
+        // Usamos el mensaje personalizado si existe, si no, uno simple.
+        let welcomeText = chat.customWelcome || "Bienvenido/a al grupo. Ahora solo enviamos texto."
+        
         welcomeText = welcomeText.replace(/\\n/g, '\n')
         let finalCaption = welcomeText.replace(/@user/g, mentionListText) 
 
@@ -22,16 +26,17 @@ export async function before(m, { conn }) {
                 mentions: [who]
             }
 
-            // Solo enviamos el texto
+            // Solo enviamos el texto (resolviendo el error de imagen)
             messageOptions.text = finalCaption
 
             await conn.sendMessage(m.chat, messageOptions)
 
         } catch (e) {
             
-            const errorMsg = `❌ *FALLO AL ENVIAR BIENVENIDA*\n\n*Error:* ${e.name}: ${e.message}\n\n⚠️ Esto puede deberse a la falta de permisos del bot (no es Admin) o a que el grupo está en modo 'Solo Admin'.`
+            // Reporte de error al chat si falla el envío
+            const errorMsg = `❌ FALLO AL ENVIAR BIENVENIDA:\nError: ${e.name}: ${e.message}\nVerifica permisos de Admin.`
             
-            console.error("ERROR AL ENVIAR BIENVENIDA (VERIFICAR PERMISOS DEL BOT O FALLA DE CONEXIÓN):", e)
+            console.error("ERROR AL ENVIAR BIENVENIDA:", e)
             
             try {
                 await conn.sendMessage(m.chat, { text: errorMsg })
