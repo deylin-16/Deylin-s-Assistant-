@@ -26,25 +26,39 @@ async function sendBatchedWelcome(conn, jid) {
     const groupMetadata = (await conn.groupMetadata(jid).catch(() => ({}))) || {}
     const chat = global.db?.data?.chats?.[jid] || {}
 
-    let ppGroup = 'https://raw.githubusercontent.com/Deylin-Eliac/Pikachu-Bot/refs/heads/main/src/IMG-20250613-WA0194.jpg'
+    let ppGroup = null
     try {
         ppGroup = await conn.profilePictureUrl(jid, 'image')
-    } catch (e) {}
+    } catch (e) {
+        
+    }
 
     const mentionListText = users.map(jid => `@${jid.split("@")[0]}`).join(', ')
 
     let welcomeText = chat.customWelcome || "bienvenido al grupo @user"
 
-    let finalCaption = welcomeText.replace(/@user/g, mentionListText).trim()
+    
+    welcomeText = welcomeText.replace(/\\n/g, '\n')
+    
+    
+    let finalCaption = welcomeText.replace(/@user/g, mentionListText) 
 
     try {
-        await conn.sendMessage(jid, {
-            image: { url: ppGroup },
-            caption: finalCaption,
+        const messageOptions = {
             mentions: users
-        })
+        }
+
+        if (ppGroup) {
+            messageOptions.image = { url: ppGroup }
+            messageOptions.caption = finalCaption
+        } else {
+            messageOptions.text = finalCaption
+        }
+        
+        await conn.sendMessage(jid, messageOptions)
+        
     } catch (e) {
-        console.error(e)
+        console.error("ERROR AL ENVIAR BIENVENIDA (VERIFICAR PERMISOS DEL BOT O FALLA DE CONEXIÓN):", e)
     }
 
     delete conn.welcomeBatch[jid]
