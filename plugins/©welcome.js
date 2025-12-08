@@ -6,6 +6,7 @@ export async function before(m, { conn, participants, groupMetadata }) {
     if (botSettings.soloParaJid) return
     if (!m.messageStubType || !m.isGroup) return true
 
+    const totalMembers = participants.length
     const who = m.messageStubParameters?.[0]
     if (!who) return
 
@@ -14,53 +15,48 @@ export async function before(m, { conn, participants, groupMetadata }) {
     const chat = global.db.data.chats[m.chat]
     if (!chat?.welcome || !chat?.customWelcome) return
 
-    const totalMembers = participants.length
     const user = participants.find(p => p.jid === who)
+    const userName = user?.notify || who.split('@')[0]
     const mentionListText = `@${who.split('@')[0]}`
 
     let ppUrl
     const defaultPp = 'https://i.ibb.co/jPSF32Pz/9005bfa156f1f56fb2ac661101d748a5.jpg'
-
+    
     try {
         ppUrl = await conn.profilePictureUrl(who, 'image')
     } catch {
         ppUrl = defaultPp
     }
-
-    const welcomeText = chat.customWelcome
-    let finalCaption = welcomeText.replace(/\\n/g, '\n').replace(/@user/g, mentionListText).trim()
-
-    const jid = m.chat
-    const mentionId = who ? [who] : []
     
-    let thumbnailBuffer
+    const welcomeText = chat.customWelcome
+    const finalCaption = welcomeText.replace(/\\n/g, '\n').replace(/@user/g, mentionListText)
+
+    let fkontak
     try {
-        const res = await fetch(ppUrl)
-        thumbnailBuffer = await res.buffer()
-    } catch {
-        const defaultRes = await fetch(defaultPp)
-        thumbnailBuffer = await defaultRes.buffer()
+        const res2 = await fetch(ppUrl)
+        const img3 = Buffer.from(await res2.arrayBuffer())
+        fkontak = {
+            key: { fromMe: false, participant: "0@s.whatsapp.net" },
+            message: { locationMessage: { name: `BIENVENIDO ${userName}`, jpegThumbnail: img3 } }
+        }
+    } catch (e) {
+        console.error(e)
     }
 
-    const fullText = `*¡BIENVENIDO!* Ahora somos ${totalMembers} miembros.\n\n` + finalCaption
+    const jid = m.chat
 
-    await conn.sendMessage(jid, {
-        text: fullText,
-        contextInfo: {
-            mentionedJid: mentionId,
-            externalAdReply: {
-                title: `¡BIENVENIDO!`,
-                body: `Total de miembros: ${totalMembers}`,
-                mediaType: 1,
-                mediaUrl: ppUrl, 
-                sourceUrl: 'https://whatsapp.com', 
-                thumbnail: thumbnailBuffer,
-                showAdAttribution: false,
-                containsAutoReply: true,
-                renderLargerThumbnail: true
-            }
+    const mentionId = who ? [who] : []
+
+    const imageMessage = {
+        image: { url: ppUrl }, 
+        caption: finalCaption.trim(), 
+        contextInfo: { 
+            mentionedJid: mentionId, 
         }
-    }, {
-        quoted: null
+    }
+
+    
+    await conn.sendMessage(jid, imageMessage, {
+        quoted: fkontak 
     })
 }
