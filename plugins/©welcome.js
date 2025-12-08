@@ -32,12 +32,12 @@ export async function before(m, { conn, participants, groupMetadata }) {
     const finalCaption = welcomeText.replace(/\\n/g, '\n').replace(/@user/g, mentionListText)
 
     let fkontak
+    let nombreDelGrupo = groupMetadata.subject
+
     try {
-        const res2 = await fetch(ppUrl)
-        const img3 = Buffer.from(await res2.arrayBuffer())
         fkontak = {
             key: { fromMe: false, participant: "0@s.whatsapp.net" },
-            message: { locationMessage: { name: `BIENVENIDO ${userName}`, jpegThumbnail: img3 } }
+            message: { locationMessage: { name: `BIENVENID@ A _ ${nombreDelGrupo}`} }
         }
     } catch (e) {
         console.error(e)
