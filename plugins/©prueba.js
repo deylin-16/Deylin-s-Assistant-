@@ -56,7 +56,7 @@ export async function before(m, { conn, participants, groupMetadata }) {
         title: 'gati',
         subtitle: '',
         
-        footer: finalCaption.replace(/\n/g, ' ').slice(0, 100) + '...', 
+        footer: finalCaption.replace(/\n/g, ' ').slice(0, 10000000000000) + '.', 
         mentions: who ? [who] : []
     }
 
