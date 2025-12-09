@@ -10,7 +10,10 @@ export async function before(m, { conn, participants, groupMetadata }) {
     const who = m.messageStubParameters?.[0]
     if (!who) return
 
-    if (m.messageStubType !== WAMessageStubType.GROUP_PARTICIPANT_ADD) return
+    
+    if (m.messageStubType !== WAMessageStubType.GROUP_PARTICIPANT_ADD &&
+        m.messageStubType !== WAMessageStubType.GROUP_PARTICIPANT_ACCEPT) return
+   
 
     const chat = global.db.data.chats[m.chat]
     if (!chat?.welcome || !chat?.customWelcome) return
