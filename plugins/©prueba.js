@@ -1,45 +1,93 @@
-import fs from 'fs'
 import { WAMessageStubType } from '@whiskeysockets/baileys'
+import fetch from 'node-fetch'
 
-async function generarBienvenida({ conn, userId, groupMetadata, chat }) {
-const username = `@${userId.split('@')[0]}`
-const pp = await conn.profilePictureUrl(userId, 'image').catch(() => 'https://i.ibb.co/jPSF32Pz/9005bfa156f1f56fb2ac661101d748a5.jpg')
-const fecha = new Date().toLocaleDateString("es-ES", { timeZone: "America/Mexico_City", day: 'numeric', month: 'long', year: 'numeric' })
-const groupSize = groupMetadata.participants.length + 1
-const desc = groupMetadata.desc?.toString() || 'Sin descripción'
-const mensaje = (chat.sWelcome || 'Edita con el comando "setwelcome"').replace(/{usuario}/g, `${username}`).replace(/{grupo}/g, `*${groupMetadata.subject}*`).replace(/{desc}/g, `${desc}`)
-const caption = `❀ Bienvenido a *"_${groupMetadata.subject}_"*\n✰ _Usuario_ » ${username}\n● ${mensaje}\n◆ _Ahora somos ${groupSize} Miembros._\nꕥ Fecha » ${fecha}\n૮꒰ ˶• ᴗ •˶꒱ა Disfruta tu estadía en el grupo!\n> *➮ Puedes usar _#help_ para ver la lista de comandos.*`
-return { pp, caption, mentions: [userId] }
-}
-async function generarDespedida({ conn, userId, groupMetadata, chat }) {
-const username = `@${userId.split('@')[0]}`
-const pp = await conn.profilePictureUrl(userId, 'image').catch(() => 'https://raw.githubusercontent.com/The-King-Destroy/Adiciones/main/Contenido/1745522645448.jpeg')
-const fecha = new Date().toLocaleDateString("es-ES", { timeZone: "America/Mexico_City", day: 'numeric', month: 'long', year: 'numeric' })
-const groupSize = groupMetadata.participants.length - 1
-const desc = groupMetadata.desc?.toString() || 'Sin descripción'
-const mensaje = (chat.sBye || 'Edita con el comando "setbye"').replace(/{usuario}/g, `${username}`).replace(/{grupo}/g, `${groupMetadata.subject}`).replace(/{desc}/g, `*${desc}*`)
-const caption = `❀ Adiós de *"_${groupMetadata.subject}_"*\n✰ _Usuario_ » ${username}\n● ${mensaje}\n◆ _Ahora somos ${groupSize} Miembros._\nꕥ Fecha » ${fecha}\n(˶˃⤙˂˶) Te esperamos pronto!\n> *➮ Puedes usar _#help_ para ver la lista de comandos.*`
-return { pp, caption, mentions: [userId] }
-}
-let handler = m => m
-handler.before = async function (m, { conn, participants, groupMetadata }) {
-if (!m.messageStubType || !m.isGroup) return !0
-const primaryBot = global.db.data.chats[m.chat].primaryBot
-if (primaryBot && conn.user.jid !== primaryBot) throw !1
-const chat = global.db.data.chats[m.chat]
-const userId = m.messageStubParameters[0]
-if (chat.welcome && m.messageStubType == WAMessageStubType.GROUP_PARTICIPANT_ADD) {
-const { pp, caption, mentions } = await generarBienvenida({ conn, userId, groupMetadata, chat })
-rcanal.contextInfo.mentionedJid = mentions
-await conn.sendMessage(m.chat, { image: { url: pp }, caption }, { quoted: null })
-try { fs.unlinkSync(img) } catch {}
-}
-if (chat.welcome && (m.messageStubType == WAMessageStubType.GROUP_PARTICIPANT_REMOVE || m.messageStubType == WAMessageStubType.GROUP_PARTICIPANT_LEAVE)) {
-const { pp, caption, mentions } = await generarDespedida({ conn, userId, groupMetadata, chat })
-rcanal.contextInfo.mentionedJid = mentions
-await conn.sendMessage(m.chat, { image: { url: pp }, caption }, { quoted: null })
-try { fs.unlinkSync(img) } catch {}
-}}
+async function obtenerPais(numero) {
+  try {
+    let number = numero.replace("@s.whatsapp.net", "");
+    const res = await fetch(`https://g-mini-ia.vercel.app/api/infonumero?numero=${number}`);
+    const data = await res.json();
 
-export { generarBienvenida, generarDespedida }
-export default handler
+    if (data && data.pais) return data.pais;
+    if (data && data.bandera && data.nombre) return `${data.bandera} ${data.nombre}`;
+
+    return "🌐 Desconocido";
+  } catch (e) {
+    return "🌐 Desconocido";
+  }
+}
+
+export async function before(m, { conn, participants, groupMetadata }) {
+  if (!m.messageStubType || !m.isGroup) return;
+//  if (m.chat === "120363402481697721@g.us") return;
+
+  const who = m.messageStubParameters?.[0];
+  if (!who) return;
+
+  const taguser = `@${who.split("@")[0]}`;
+  const chat = global.db?.data?.chats?.[m.chat] || {};
+  const totalMembers = participants.length;
+  const date = new Date().toLocaleString("es-ES", { timeZone: "America/Mexico_City" });
+
+  const pais = await obtenerPais(who);
+  let ppUser = 'https://i.ibb.co/jPSF32Pz/9005bfa156f1f56fb2ac661101d748a5.jpg';
+
+  try {
+    ppUser = await conn.profilePictureUrl(who, 'image');
+  } catch (e) {}
+
+  const frasesBienvenida = [
+    "¡Pika Pika! Bienvenido al grupo.",
+    "¡Un rayo de energía ha llegado al grupo!",
+    "Pikachu dice que este grupo ahora es 100% más eléctrico ⚡",
+    "¡Esperamos que la pases genial, entrenador!",
+    "Bienvenido al equipo, ¡que empiece la aventura Pokémon!"
+  ];
+  const frasesDespedida = [
+    "Pikachu te dice adiós con una descarga de cariño.",
+    "Otro entrenador deja el grupo... ¡Buena suerte!",
+    "¡Hasta la próxima, no olvides tus Pokéballs!",
+    "El grupo se queda con menos voltaje ⚡",
+    "Pikachu te extrañará 🥺"
+  ];
+
+  const fraseRandomBienvenida = frasesBienvenida[Math.floor(Math.random() * frasesBienvenida.length)];
+  const fraseRandomDespedida = frasesDespedida[Math.floor(Math.random() * frasesDespedida.length)];
+
+  if (chat.welcome) {
+    if (m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_ADD) {
+      const bienvenida = `
+*⚡─『 𝑩𝑰𝑬𝑵𝑽𝑬𝑵𝑰𝑫𝑶/𝑨 』─🧃*
+👤 *Usuario:* ${taguser}
+🌍 *País:* ${pais}
+💬 *Grupo:* *${groupMetadata.subject}*
+👥 *Miembros:* *${totalMembers + 1}*
+📅 *Fecha:* *${date}*
+`.trim();
+
+      await conn.sendMessage(m.chat, {
+        image: { url: ppUser },
+        caption: bienvenida,
+        mentions: [who]
+      });
+    }
+
+    if (
+      m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_LEAVE ||
+      m.messageStubType === WAMessageStubType.GROUP_PARTICIPANT_REMOVE
+    ) {
+      const despedida = `
+*⚡──『 𝑫𝑬𝑺𝑷𝑬𝑫𝑰𝑫𝑨 』──🧃*
+👤 *Usuario:* ${taguser}
+🌍 *País:* ${pais}
+💬 *Grupo:* *${groupMetadata.subject}*
+👥 *Miembros:* *${totalMembers - 1}*
+📅 *Fecha:* *${date}*`.trim();
+
+      await conn.sendMessage(m.chat, {
+        image: { url: ppUser },
+        caption: despedida,
+        mentions: [who]
+      });
+    }
+  }
+}
