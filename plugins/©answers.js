@@ -251,7 +251,7 @@ let handler = async (m, { conn }) => {
   if (!key) return
 
   let r = respuestas[key]
-const res = await fetch(`${kirito}/media/images/87411733_k.jpg`);
+const res = await fetch(`https://i.postimg.cc/Xv1QwhGc/1756438880305.jpg`);
   const thumb2 = Buffer.from(await res.arrayBuffer());
 const userJid = m.sender;
 
