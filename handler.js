@@ -75,7 +75,7 @@ export async function handler(chatUpdate) {
             antiLink: true,
             nsfw: false,
             expired: 0,
-            autoresponder2: false,
+            autoresponder2: true,
             per: [],
         };
 
