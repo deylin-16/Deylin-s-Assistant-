@@ -1,4 +1,4 @@
-
+/*
 import fetch from 'node-fetch' 
 
 const respuestas = {
@@ -273,3 +273,4 @@ const userJid = m.sender;
 handler.customPrefix = new RegExp(`^(${Object.keys(respuestas).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`, 'i')
 handler.command = new RegExp
 export default handler
+*/
