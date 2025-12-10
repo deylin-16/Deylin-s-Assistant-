@@ -124,15 +124,21 @@ global.loadDatabase = async function loadDatabase() {
 
     try {
         await global.db.read()
-        global.db.data = {
+        
+        const defaultData = {
             users: {},
             chats: {},
             stats: {},
             msgs: {},
             sticker: {},
             settings: {},
+        };
+        
+        global.db.data = {
+            ...defaultData,
             ...(global.db.data || {}),
-        }
+        };
+        
         global.db.chain = chain(global.db.data)
         console.log(chalk.bold.greenBright('✅ Base de datos cargada con éxito.'))
     } catch (error) {
