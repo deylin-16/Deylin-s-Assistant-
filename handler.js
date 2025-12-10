@@ -17,6 +17,7 @@ async function sendUniqueError(conn, error, origin, m) {
         global.sentErrors = new Set();
     }
     
+    // Filtramos información sensible como las API Keys
     const errorText = format(error).replace(new RegExp(Object.values(global.APIKeys || {}).join('|'), 'g'), 'Administrador');
     const hash = createHash('sha256').update(errorText).digest('hex');
 
@@ -46,12 +47,15 @@ ${errorText.substring(0, 1500)}
 }
 
 async function getLidFromJid(id, connection) {
+    // Si la conexión no existe o no tiene el método, devolvemos el ID
+    if (!connection || typeof connection.onWhatsApp !== 'function') return id; 
+
     if (id.endsWith('@lid')) return id;
     const res = await connection.onWhatsApp(id).catch(() => []);
     return res[0]?.lid || id;
 }
 
-// --- Serialización del Mensaje (smsg) - REFORZADA contra TypeError ---
+// --- Serialización del Mensaje (smsg) - BLINDAJE CRÍTICO ---
 function smsg(conn, m, store) {
     if (!m) return m;
 
@@ -66,17 +70,26 @@ function smsg(conn, m, store) {
         m.id = k;
         m.isBaileys = m.id?.startsWith('BAE5') && m.id?.length === 16;
         
+        // REFUERZO 1: Asegura que normalizeJid existe
         const normalizeJidSafe = (conn?.normalizeJid && typeof conn.normalizeJid === 'function') ? conn.normalizeJid : ((jid) => jid);
 
         const remoteJid = m.key?.remoteJid || '';
         if (!remoteJid || !remoteJid.includes('@')) {
-             return null; // CRÍTICO: Descarta mensajes sin un JID remoto válido
+             // CRÍTICO: Descarta mensajes sin un JID remoto válido (Causa del 90% del TypeError)
+             console.log(`[smsg FAIL] Descartado: remoteJid inválido o nulo. Mensaje ID: ${m.id}`);
+             return null; 
         }
 
         m.chat = normalizeJidSafe(remoteJid); 
         m.fromMe = m.key?.fromMe;
         
         const botJid = conn?.user?.jid || ''; 
+        // Si no hay botJid, no podemos serializar correctamente el sender si es "fromMe"
+        if (!botJid) {
+             console.warn("[smsg FAIL] No se pudo obtener el JID del bot. Serialización incompleta.");
+             // Aun así, podemos intentar asignar el sender basado en participant o remoteJid.
+        }
+        
         m.sender = normalizeJidSafe(m.key?.fromMe ? botJid : m.key?.participant || remoteJid);
 
         m.text = m.message?.extendedTextMessage?.text || m.message?.conversation || m.message?.imageMessage?.caption || m.message?.videoMessage?.caption || '';
@@ -102,8 +115,9 @@ function smsg(conn, m, store) {
         return m;
 
     } catch (e) {
-        console.error("Error grave en smsg:", e); 
-        return null; // Descarta si falla la serialización
+        // Log para identificar qué mensaje falló en la serialización (como se ve en la captura 53075)
+        console.error("Error grave en smsg - Objeto 'm' inválido (descartado):", m, e); 
+        return null; // Devuelve null si falla para que el handler lo descarte
     }
 }
 
@@ -120,7 +134,6 @@ export async function handler(chatUpdate, store) {
 
     let m = chatUpdate.messages[chatUpdate.messages.length - 1];
 
-    // Verificación básica del objeto de mensaje
     if (!m || !m.key || !m.message || !m.key.remoteJid) return;
 
     // Desencriptar mensajes efímeros
@@ -131,7 +144,7 @@ export async function handler(chatUpdate, store) {
         }
     }
 
-    // Serializar el mensaje y descartar si falla (Usa la smsg blindada de arriba)
+    // CRÍTICO: Serializar el mensaje y descartar si falla
     m = smsg(conn, m, store) || m; 
     if (!m) return; 
 
@@ -173,16 +186,16 @@ export async function handler(chatUpdate, store) {
 
         // CRÍTICO: DOBLE VERIFICACIÓN DEL JID ANTES DE ACCEDER A LA BD
         if (!chatJid || !chatJid.includes('@')) {
-             console.error(`JID del chat inválido (REFORZADO, CAUSA DEL ERROR): ${chatJid}. Mensaje descartado.`);
+             console.error(`JID del chat inválido (REFORZADO): ${chatJid}. Mensaje descartado.`);
              return; // Esto detiene el TypeError
         }
         
         if (!botJid) {
              console.error('El Bot JID es undefined. No se puede inicializar la configuración.');
-             return;
+             // No retornamos aquí para permitir que el código continúe si no se usa conn.user.jid, pero es una advertencia grave.
         }
         
-        // Inicialización de chat (SAFE ACCESS)
+        // Inicialización de chat (SAFE ACCESS - Usa ||={} para evitar el TypeError)
         global.db.data.chats[chatJid] ||= {
             isBanned: false,
             sAutoresponder: '',
@@ -202,30 +215,33 @@ export async function handler(chatUpdate, store) {
             per: [],
         };
 
-        // Inicialización de settings del bot
-        const settingsJid = conn.user.jid;
-        global.db.data.settings[settingsJid] ||= {
-            self: false,
-            restrict: true,
-            jadibotmd: true,
-            antiPrivate: false,
-            autoread: false,
-            soloParaJid: false,
-            status: 0
-        };
+        // Inicialización de settings del bot (SAFE ACCESS - Usa settingsJid, que debe ser botJid)
+        if (botJid) {
+            global.db.data.settings[botJid] ||= {
+                self: false,
+                restrict: true,
+                jadibotmd: true,
+                antiPrivate: false,
+                autoread: false,
+                soloParaJid: false,
+                status: 0
+            };
+        } else {
+             // Si botJid es nulo, no podemos inicializar settings. Se usará un objeto vacío temporalmente.
+             global.db.data.settings['unknown'] ||= {};
+        }
 
-        // Inicialización de usuario
-        const user = global.db.data.users[senderJid] || {};
+        // Inicialización de usuario (SAFE ACCESS)
+        global.db.data.users[senderJid] ||= {};
+        
+        const user = global.db.data.users[senderJid];
         const chat = global.db.data.chats[chatJid];
-        const settings = global.db.data.settings[settingsJid];
+        const settings = botJid ? global.db.data.settings[botJid] : global.db.data.settings['unknown'];
 
-        if (typeof global.db.data.users[senderJid] !== 'object') global.db.data.users[senderJid] = {};
         if (user) {
             if (!('exp' in user) || !isNumber(user.exp)) user.exp = 0;
             if (!('coin' in user) || !isNumber(user.coin)) user.coin = 0;
             if (!('muto' in user)) user.muto = false; 
-        } else {
-            global.db.data.users[senderJid] = { exp: 0, coin: 0, muto: false };
         }
 
         // Roles y Permisos
