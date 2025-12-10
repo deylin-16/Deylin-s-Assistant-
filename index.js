@@ -25,8 +25,7 @@ import cp from 'child_process'
 import cfonts from 'cfonts'
 import { randomBytes } from 'crypto' 
 
-const { DisconnectReason, useMultiFileAuthState, MessageRetryMap, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, jidNormalizedUser, makeWASocket } = await import('@whiskeysockets/baileys')
-import { WAProto as proto } from '@whiskeysockets/baileys';
+const { WAProto: proto, DisconnectReason, useMultiFileAuthState, MessageRetryMap, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, jidNormalizedUser, makeWASocket } = await import('@whiskeysockets/baileys')
 
 
 const { PhoneNumberUtil } = pkg
@@ -42,7 +41,7 @@ global.botNumber = global.botNumber || ''
 
 let { say } = cfonts
 
-const { protoType: WAProtoType } = proto;
+const WAProtoType = proto.Message.prototype;
 
 function protoType() {
     Object.assign(WAProtoType, {
