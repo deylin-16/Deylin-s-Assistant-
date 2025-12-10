@@ -66,10 +66,14 @@ export async function handler(chatUpdate, store) {
         m.exp = 0;
         m.coin = false;
 
+        // --- INICIALIZACIÓN DE JIDS REFORZADA ---
         const senderJid = m.sender;
         const chatJid = m.chat;
         const botJid = conn.user.jid;
 
+        // Comprobación de JID antes de acceder a la base de datos (SOLUCIÓN AL ERROR DE LÍNEA 39)
+        if (!chatJid || chatJid === '') return; 
+        
         global.db.data.chats[chatJid] ||= {
             isBanned: false,
             sAutoresponder: '',
