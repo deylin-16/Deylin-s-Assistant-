@@ -41,7 +41,6 @@ ${errorText.substring(0, 1500)}
     try {
         await conn.sendMessage(targetJid, { text: messageBody });
         global.sentErrors.add(hash);
-        console.log(`Error único enviado a ${targetJid}. Hash: ${hash}`);
     } catch (sendError) {
         console.error(`Fallo al enviar el error de notificación:`, sendError);
     }
@@ -54,7 +53,7 @@ async function getLidFromJid(id, connection) {
     return res[0]?.lid || id;
 }
 
-function smsg(conn, m, store) {
+function smsg(conn, m) {
     if (!m) return m;
 
     try {
@@ -68,20 +67,19 @@ function smsg(conn, m, store) {
         m.id = k;
         m.isBaileys = m.id?.startsWith('BAE5') && m.id?.length === 16;
         
-        const normalizeJidSafe = (conn?.normalizeJid && typeof conn.normalizeJid === 'function') ? conn.normalizeJid : ((jid) => jid);
+        const normalizeJidSafe = conn?.normalizeJid;
 
         const remoteJid = m.key?.remoteJid || '';
         if (!remoteJid || !remoteJid.includes('@')) {
-             console.log(`[smsg FAIL] Descartado: remoteJid inválido o nulo. Mensaje ID: ${m.id}`);
              return null; 
         }
 
         m.chat = normalizeJidSafe(remoteJid); 
         m.fromMe = m.key?.fromMe;
         
-        const botJid = conn?.user?.jid || store?.self?.id || ''; 
+        const botJid = conn?.user?.jid || ''; 
         if (!botJid) {
-             console.warn("[smsg FAIL] No se pudo obtener el JID del bot. Serialización incompleta.");
+             return null;
         }
         
         m.sender = normalizeJidSafe(m.key?.fromMe ? botJid : m.key?.participant || remoteJid);
@@ -142,7 +140,7 @@ function getSafeChatData(jid) {
     return global.db.data.chats[jid];
 }
 
-export async function handler(chatUpdate, store) {
+export async function handler(chatUpdate) {
     const startTime = Date.now();
     this.uptime = this.uptime || Date.now();
     const conn = this;
@@ -155,7 +153,7 @@ export async function handler(chatUpdate, store) {
 
     if (!m || !m.key || !m.message || !m.key.remoteJid) return;
     
-    const botJid = conn.user?.jid || store?.self?.id;
+    const botJid = conn.user?.jid; 
     if (!botJid) {
         return; 
     }
@@ -167,7 +165,7 @@ export async function handler(chatUpdate, store) {
         }
     }
 
-    m = smsg(conn, m, store) || m; 
+    m = smsg(conn, m) || m; 
     if (!m || !m.chat || !m.sender) {
         return; 
     } 
@@ -176,7 +174,6 @@ export async function handler(chatUpdate, store) {
         try {
             await global.loadDatabase();
         } catch (e) {
-            console.error("Fallo crítico al cargar la base de datos:", e);
             await sendUniqueError(conn, e, 'Handler Init LoadDB', m);
             return;
         }
@@ -213,7 +210,6 @@ export async function handler(chatUpdate, store) {
 
         const chat = getSafeChatData(chatJid);
         if (chat === null) {
-            console.error('ERROR CRÍTICO: No se pudo acceder a global.db.data.chats. Es nulo o no está listo.');
             return;
         }
 
@@ -232,7 +228,6 @@ export async function handler(chatUpdate, store) {
             };
             settings = global.db.data.settings[settingsJid];
         } else {
-            console.error('Advertencia: JID del bot inesperadamente nulo para settings (post-verificación).');
         }
 
         global.db.data.users[senderJid] ||= {};
@@ -298,7 +293,6 @@ export async function handler(chatUpdate, store) {
 
         for (const name in global.plugins) {
             if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                 console.warn('Handler detenido: Excedido el tiempo de ejecución máximo.');
                  return;
             }
 
@@ -315,7 +309,6 @@ export async function handler(chatUpdate, store) {
                         __filename
                     });
                 } catch (e) {
-                    console.error(`Error en plugin.all de ${name}:`, e);
                     await sendUniqueError(conn, e, `plugin.all: ${name}`, m);
                 }
             }
@@ -378,7 +371,6 @@ export async function handler(chatUpdate, store) {
                         continue;
                     }
                 } catch (e) {
-                    console.error(`Error en plugin.before de ${name}:`, e);
                     await sendUniqueError(conn, e, `plugin.before: ${name}`, m);
                     continue;
                 }
@@ -442,7 +434,6 @@ export async function handler(chatUpdate, store) {
                 await plugin.call(conn, m, extra);
             } catch (e) {
                 m.error = e;
-                console.error(`Error de ejecución en plugin ${name}:`, e);
                 await sendUniqueError(conn, e, `plugin.call: ${name}`, m); 
 
                 const errorText = format(e).replace(new RegExp(Object.values(global.APIKeys).join('|'), 'g'), 'Administrador');
@@ -452,7 +443,6 @@ export async function handler(chatUpdate, store) {
                     try {
                         await plugin.after.call(conn, m, extra);
                     } catch (e) {
-                        console.error(`Error en plugin.after de ${name}:`, e);
                         await sendUniqueError(conn, e, `plugin.after: ${name}`, m);
                     }
                 }
@@ -460,7 +450,6 @@ export async function handler(chatUpdate, store) {
         }
 
     } catch (e) {
-        console.error('Error no capturado en handler:', e);
         await sendUniqueError(conn, e, 'Handler Global', m); 
     } finally {
         if (m) {
@@ -490,17 +479,12 @@ export async function handler(chatUpdate, store) {
 
 global.dfail = (type, m, conn) => {
     const messages = {
-        rowner: `
-Solo con Deylin-Eliac hablo de eso w. 
-`,
-        owner: `Solo con Deylin-Eliac hablo de eso w. 
-`,
-        group: `Si quieres hablar de eso solo en grupos bro. `,
+        rowner: `Solo con Deylin-Eliac hablo de eso w.`,
+        owner: `Solo con Deylin-Eliac hablo de eso w.`,
+        group: `Si quieres hablar de eso solo en grupos bro.`,
         private: `De ésto solo habló en privado güey.`,
-        admin: `Solo los administradores me pueden decir que hacer. 
-`,
-        botAdmin: `Dame admin bro para seguir. 
-`
+        admin: `Solo los administradores me pueden decir que hacer.`,
+        botAdmin: `Dame admin bro para seguir.`,
     };
     if (messages[type]) {
         conn.reply(m.chat, messages[type], m);
