@@ -127,7 +127,7 @@ export async function handler(chatUpdate, store) {
         }
         
         // Inicialización de chat (Causa del 90% de los errores)
-        global.db.data.chats[chatJid] ||= {
+        global.db.data.chats[m.chat] ||= {
             isBanned: false,
             sAutoresponder: '',
             welcome: true,
