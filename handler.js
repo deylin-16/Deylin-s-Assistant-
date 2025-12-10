@@ -79,7 +79,6 @@ function smsg(conn, m, store) {
         m.chat = normalizeJidSafe(remoteJid); 
         m.fromMe = m.key?.fromMe;
         
-        // **CRÍTICO:** Obtener el JID del bot de forma ultra segura
         const botJid = conn?.user?.jid || store?.self?.id || ''; 
         if (!botJid) {
              console.warn("[smsg FAIL] No se pudo obtener el JID del bot. Serialización incompleta.");
@@ -117,11 +116,9 @@ function smsg(conn, m, store) {
 
 function getSafeChatData(jid) {
     if (!global.db.data || !global.db.data.chats) {
-        // En este punto, si falla, es que la DB no se cargó correctamente.
         return null; 
     }
     
-    // Blindaje de inicialización de la entrada del chat
     if (!global.db.data.chats[jid]) {
         global.db.data.chats[jid] = {
             isBanned: false,
@@ -158,12 +155,8 @@ export async function handler(chatUpdate, store) {
 
     if (!m || !m.key || !m.message || !m.key.remoteJid) return;
     
-    // **Blindaje 2.0 (MODIFICADO): Esperar al JID del bot**
-    // Si no está el JID del bot, la sesión no ha finalizado la carga. Descartamos mensajes.
     const botJid = conn.user?.jid || store?.self?.id;
     if (!botJid) {
-        // Reducimos el log a 'debug' si estamos seguros de que se cargará
-        // console.warn('Handler detenido: JID del bot no disponible. Esperando conexión.');
         return; 
     }
 
@@ -174,16 +167,13 @@ export async function handler(chatUpdate, store) {
         }
     }
 
-    // Serializar el mensaje
     m = smsg(conn, m, store) || m; 
     if (!m || !m.chat || !m.sender) {
         return; 
     } 
 
-    // **Blindaje 3.0 (MODIFICADO): Carga de la DB Forzada**
     if (global.db.data == null) {
         try {
-            // Asumimos que global.loadDatabase existe y es asíncrona.
             await global.loadDatabase();
         } catch (e) {
             console.error("Fallo crítico al cargar la base de datos:", e);
@@ -192,15 +182,12 @@ export async function handler(chatUpdate, store) {
         }
     }
     
-    // --- BLINDAJE CRÍTICO REFORZADO AQUÍ ---
     if (global.db.data == null) return;
     
-    // Garantizar que la estructura base existe AHORA.
     global.db.data.users = global.db.data.users || {};
     global.db.data.chats = global.db.data.chats || {};
     global.db.data.settings = global.db.data.settings || {};
     global.db.data.stats = global.db.data.stats || {};
-    // ----------------------------------------
 
     conn.processedMessages = conn.processedMessages || new Map();
     const now = Date.now();
@@ -224,10 +211,8 @@ export async function handler(chatUpdate, store) {
         const senderJid = m.sender;
         const chatJid = m.chat;
 
-        // Acceso seguro al chat usando la función blindada
         const chat = getSafeChatData(chatJid);
         if (chat === null) {
-            // Este es el punto exacto de tu TypeError
             console.error('ERROR CRÍTICO: No se pudo acceder a global.db.data.chats. Es nulo o no está listo.');
             return;
         }
@@ -235,7 +220,6 @@ export async function handler(chatUpdate, store) {
         const settingsJid = botJid;
         let settings = {};
 
-        // Inicialización segura de settings usando el JID del bot ya verificado
         if (settingsJid) {
             global.db.data.settings[settingsJid] ||= {
                 self: false,
@@ -251,7 +235,6 @@ export async function handler(chatUpdate, store) {
             console.error('Advertencia: JID del bot inesperadamente nulo para settings (post-verificación).');
         }
 
-        // Inicialización segura del usuario
         global.db.data.users[senderJid] ||= {};
         const user = global.db.data.users[senderJid];
 
