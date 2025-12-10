@@ -26,6 +26,7 @@ async function sendUniqueError(conn, error, origin, m) {
         return;
     }
 
+    // JID del Owner/Dev para notificaciones
     const targetJid = '50432955554@s.whatsapp.net'; 
     const messageBody = `
 🚨 *ERROR CRÍTICO DETECTADO* 🚨
@@ -156,8 +157,6 @@ export async function handler(chatUpdate) {
     if (!m || !m.key || !m.message || !m.key.remoteJid) return;
     
     const botJid = conn.user?.jid; 
-    // Si el JID no está disponible, descartamos para evitar el error grave, 
-    // pero la corrección en index.js debería evitar que esto suceda si la conexión está abierta.
     if (!botJid) {
         return; 
     }
@@ -177,7 +176,6 @@ export async function handler(chatUpdate) {
     // Revisión y carga de DB, en caso de fallo crítico de sincronización
     if (global.db.data == null) {
         try {
-            // Intentar cargar la DB si se detecta nula, aunque debería estar lista en index.js
             await global.loadDatabase();
         } catch (e) {
             await sendUniqueError(conn, e, 'Handler Init LoadDB', m);
@@ -215,7 +213,6 @@ export async function handler(chatUpdate) {
         const chatJid = m.chat;
 
         const chat = getSafeChatData(chatJid);
-        // Descartamos si no se pudo leer la DB
         if (chat === null) {
             return;
         }
@@ -320,8 +317,6 @@ export async function handler(chatUpdate) {
                 }
             }
             
-            // ... (Resto de los filtros de prefijo y permisos) ...
-            
             if (!opts['restrict'] && plugin.tags && plugin.tags.includes('admin')) {
                 continue;
             }
@@ -345,7 +340,14 @@ export async function handler(chatUpdate) {
                 const noPrefix = m.text.replace(usedPrefix, '');
                 [command, ...args] = noPrefix.trim().split(/\s+/).filter(v => v);
                 text = args.join(' ');
-                command = (command || '').toLowerCase();
+                
+                // CRÍTICO: Detección de comando si solo se usa el prefijo (como un emoji)
+                if (!command && usedPrefix.length > 0 && Array.isArray(plugin.command) && plugin.command.includes(usedPrefix)) {
+                    command = usedPrefix;
+                    usedPrefix = ''; // El prefijo es el comando en sí.
+                } else {
+                    command = (command || '').toLowerCase();
+                }
             } else {
 
                 let isNewDetection = false;
@@ -377,7 +379,6 @@ export async function handler(chatUpdate) {
                     match, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
                 };
                 try {
-                    // Si plugin.before retorna true, el ciclo se detiene aquí (silenciosamente)
                     if (await plugin.before.call(conn, m, extraBefore)) {
                         continue;
                     }
