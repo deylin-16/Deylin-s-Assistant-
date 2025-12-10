@@ -26,7 +26,6 @@ async function sendUniqueError(conn, error, origin, m) {
         return;
     }
 
-    // Asegúrate de que este JID sea válido y exista para recibir las notificaciones
     const targetJid = '50432955554@s.whatsapp.net'; 
     const messageBody = `
 🚨 *ERROR CRÍTICO DETECTADO* 🚨
@@ -69,12 +68,10 @@ function smsg(conn, m, store) {
         m.id = k;
         m.isBaileys = m.id?.startsWith('BAE5') && m.id?.length === 16;
         
-        // Uso de conn.normalizeJid solo si está definido
         const normalizeJidSafe = (conn?.normalizeJid && typeof conn.normalizeJid === 'function') ? conn.normalizeJid : ((jid) => jid);
 
         const remoteJid = m.key?.remoteJid || '';
         if (!remoteJid || !remoteJid.includes('@')) {
-             // Este log aparece en tus capturas, descartamos el mensaje aquí.
              console.log(`[smsg FAIL] Descartado: remoteJid inválido o nulo. Mensaje ID: ${m.id}`);
              return null; 
         }
@@ -82,14 +79,12 @@ function smsg(conn, m, store) {
         m.chat = normalizeJidSafe(remoteJid); 
         m.fromMe = m.key?.fromMe;
         
-        const botJid = conn?.user?.jid || ''; 
+        // **CRÍTICO:** Obtener el JID del bot de forma ultra segura
+        const botJid = conn?.user?.jid || store?.self?.id || ''; 
         if (!botJid) {
-             // Este log también aparece en tus capturas. Si no hay JID del bot, la serialización está incompleta,
-             // pero permitimos que continúe si no es un mensaje del bot.
              console.warn("[smsg FAIL] No se pudo obtener el JID del bot. Serialización incompleta.");
         }
         
-        // Intentar obtener el JID del remitente de forma segura
         m.sender = normalizeJidSafe(m.key?.fromMe ? botJid : m.key?.participant || remoteJid);
 
         m.text = m.message?.extendedTextMessage?.text || m.message?.conversation || m.message?.imageMessage?.caption || m.message?.videoMessage?.caption || '';
@@ -100,7 +95,6 @@ function smsg(conn, m, store) {
         m.timestamp = typeof m.messageTimestamp === 'number' ? m.messageTimestamp * 1000 : null;
 
         if (m.isGroup) {
-            // Asegurarse de que conn.chats exista antes de acceder
             m.metadata = conn.chats?.[m.chat]?.metadata || {};
         }
 
@@ -116,7 +110,6 @@ function smsg(conn, m, store) {
         return m;
 
     } catch (e) {
-        // En caso de que falle la serialización por un objeto 'm' corrupto (como se ve en tus logs)
         console.error("Error grave en smsg - Objeto 'm' inválido (descartado):", m, e); 
         return null; 
     }
@@ -124,12 +117,11 @@ function smsg(conn, m, store) {
 
 function getSafeChatData(jid) {
     if (!global.db.data || !global.db.data.chats) {
-        console.error(`[getSafeChatData] global.db.data o .chats es nulo. JID: ${jid}`);
-        return null;
+        // En este punto, si falla, es que la DB no se cargó correctamente.
+        return null; 
     }
     
-    // **Blindaje 1.1: Inicialización inmediata de la entrada del chat**
-    // Esto previene el "Cannot read properties of undefined (reading '1203634...')
+    // Blindaje de inicialización de la entrada del chat
     if (!global.db.data.chats[jid]) {
         global.db.data.chats[jid] = {
             isBanned: false,
@@ -166,9 +158,12 @@ export async function handler(chatUpdate, store) {
 
     if (!m || !m.key || !m.message || !m.key.remoteJid) return;
     
-    // **Blindaje 2.0: Verificar la conexión antes de cualquier serialización crítica**
-    if (!conn.user || !conn.user.jid) {
-        console.warn('Handler detenido: JID del bot no disponible. Esperando conexión.');
+    // **Blindaje 2.0 (MODIFICADO): Esperar al JID del bot**
+    // Si no está el JID del bot, la sesión no ha finalizado la carga. Descartamos mensajes.
+    const botJid = conn.user?.jid || store?.self?.id;
+    if (!botJid) {
+        // Reducimos el log a 'debug' si estamos seguros de que se cargará
+        // console.warn('Handler detenido: JID del bot no disponible. Esperando conexión.');
         return; 
     }
 
@@ -182,10 +177,10 @@ export async function handler(chatUpdate, store) {
     // Serializar el mensaje
     m = smsg(conn, m, store) || m; 
     if (!m || !m.chat || !m.sender) {
-        // Si m es null o no tiene JID después de smsg, descartar. (Esto aborda el error 'smsg FAIL' de tus logs)
         return; 
     } 
 
+    // **Blindaje 3.0 (MODIFICADO): Carga de la DB Forzada**
     if (global.db.data == null) {
         try {
             await global.loadDatabase();
@@ -227,19 +222,19 @@ export async function handler(chatUpdate, store) {
 
         const senderJid = m.sender;
         const chatJid = m.chat;
-        const botJid = conn.user.jid; // Ya verificamos que conn.user.jid existe antes
 
         // Acceso seguro al chat usando la función blindada
         const chat = getSafeChatData(chatJid);
         if (chat === null) {
-            console.error('Error al acceder a los datos del chat, global.db.data es nulo o no está listo (post-blindaje).');
+            // Este es el punto exacto de tu TypeError
+            console.error('ERROR CRÍTICO: No se pudo acceder a global.db.data.chats. Es nulo o no está listo.');
             return;
         }
 
         const settingsJid = botJid;
         let settings = {};
 
-        // **Blindaje 3.0: Corrección de inicialización de settings**
+        // Inicialización segura de settings usando el JID del bot ya verificado
         if (settingsJid) {
             global.db.data.settings[settingsJid] ||= {
                 self: false,
@@ -252,7 +247,7 @@ export async function handler(chatUpdate, store) {
             };
             settings = global.db.data.settings[settingsJid];
         } else {
-            console.error('Advertencia: JID del bot inesperadamente nulo para settings.');
+            console.error('Advertencia: JID del bot inesperadamente nulo para settings (post-verificación).');
         }
 
         // Inicialización segura del usuario
@@ -300,7 +295,7 @@ export async function handler(chatUpdate, store) {
             isBotAdmin = !!bot?.admin;
         } else {
             senderLid = m.sender;
-            botLid = conn.user.jid;
+            botLid = botJid;
             groupMetadata = {};
             participants = [];
             user2 = {};
@@ -485,7 +480,6 @@ export async function handler(chatUpdate, store) {
         await sendUniqueError(conn, e, 'Handler Global', m); 
     } finally {
         if (m) {
-            // Se asume que global.db.data.users existe gracias al blindaje inicial
             const finalUser = global.db.data.users[m.sender];
             if (finalUser) {
                 if (finalUser.muto) {
