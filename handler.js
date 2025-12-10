@@ -7,18 +7,19 @@ import ws from 'ws';
 import { randomBytes, createHash } from 'crypto';
 import fetch from 'node-fetch';
 
-// --- Dependencias Globales ---
 const isNumber = x => typeof x === 'number' && !isNaN(x);
-const MAX_EXECUTION_TIME = 60000; // Máximo tiempo de ejecución para evitar timeouts
+const MAX_EXECUTION_TIME = 60000;
 
-// --- Sistema de Notificación de Errores Únicos a 50432955554 ---
 async function sendUniqueError(conn, error, origin, m) {
     if (typeof global.sentErrors === 'undefined') {
         global.sentErrors = new Set();
     }
     
-    // Filtramos información sensible como las API Keys
-    const errorText = format(error).replace(new RegExp(Object.values(global.APIKeys || {}).join('|'), 'g'), 'Administrador');
+    let errorText = format(error);
+    if (global.APIKeys && Object.values(global.APIKeys).length > 0) {
+        const regex = new RegExp(Object.values(global.APIKeys).join('|'), 'g');
+        errorText = errorText.replace(regex, 'KEY_CENSURADA');
+    }
     const hash = createHash('sha256').update(errorText).digest('hex');
 
     if (global.sentErrors.has(hash)) {
@@ -47,15 +48,12 @@ ${errorText.substring(0, 1500)}
 }
 
 async function getLidFromJid(id, connection) {
-    // Si la conexión no existe o no tiene el método, devolvemos el ID
     if (!connection || typeof connection.onWhatsApp !== 'function') return id; 
-
     if (id.endsWith('@lid')) return id;
     const res = await connection.onWhatsApp(id).catch(() => []);
     return res[0]?.lid || id;
 }
 
-// --- Serialización del Mensaje (smsg) - BLINDAJE CRÍTICO ---
 function smsg(conn, m, store) {
     if (!m) return m;
 
@@ -70,12 +68,10 @@ function smsg(conn, m, store) {
         m.id = k;
         m.isBaileys = m.id?.startsWith('BAE5') && m.id?.length === 16;
         
-        // REFUERZO 1: Asegura que normalizeJid existe
         const normalizeJidSafe = (conn?.normalizeJid && typeof conn.normalizeJid === 'function') ? conn.normalizeJid : ((jid) => jid);
 
         const remoteJid = m.key?.remoteJid || '';
         if (!remoteJid || !remoteJid.includes('@')) {
-             // CRÍTICO: Descarta mensajes sin un JID remoto válido (Causa del 90% del TypeError)
              console.log(`[smsg FAIL] Descartado: remoteJid inválido o nulo. Mensaje ID: ${m.id}`);
              return null; 
         }
@@ -84,10 +80,8 @@ function smsg(conn, m, store) {
         m.fromMe = m.key?.fromMe;
         
         const botJid = conn?.user?.jid || ''; 
-        // Si no hay botJid, no podemos serializar correctamente el sender si es "fromMe"
         if (!botJid) {
              console.warn("[smsg FAIL] No se pudo obtener el JID del bot. Serialización incompleta.");
-             // Aun así, podemos intentar asignar el sender basado en participant o remoteJid.
         }
         
         m.sender = normalizeJidSafe(m.key?.fromMe ? botJid : m.key?.participant || remoteJid);
@@ -115,14 +109,11 @@ function smsg(conn, m, store) {
         return m;
 
     } catch (e) {
-        // Log para identificar qué mensaje falló en la serialización (como se ve en la captura 53075)
         console.error("Error grave en smsg - Objeto 'm' inválido (descartado):", m, e); 
-        return null; // Devuelve null si falla para que el handler lo descarte
+        return null; 
     }
 }
 
-
-// --- Función Principal del Handler ---
 export async function handler(chatUpdate, store) {
     const startTime = Date.now();
     this.uptime = this.uptime || Date.now();
@@ -136,7 +127,6 @@ export async function handler(chatUpdate, store) {
 
     if (!m || !m.key || !m.message || !m.key.remoteJid) return;
 
-    // Desencriptar mensajes efímeros
     if (m.message) {
         m.message = (Object.keys(m.message)[0] === 'ephemeralMessage') ? m.message.ephemeralMessage.message : m.message;
         if (m.message.extendedTextMessage) {
@@ -144,11 +134,9 @@ export async function handler(chatUpdate, store) {
         }
     }
 
-    // CRÍTICO: Serializar el mensaje y descartar si falla
     m = smsg(conn, m, store) || m; 
     if (!m) return; 
 
-    // Carga de Base de Datos estricta
     if (global.db.data == null) {
         try {
             await global.loadDatabase();
@@ -159,7 +147,6 @@ export async function handler(chatUpdate, store) {
         }
     }
 
-    // Control de mensajes duplicados
     conn.processedMessages = conn.processedMessages || new Map();
     const now = Date.now();
     const lifeTime = 9000;
@@ -179,23 +166,19 @@ export async function handler(chatUpdate, store) {
         m.exp = 0;
         m.coin = false;
 
-        // --- INICIALIZACIÓN Y VERIFICACIÓN DE JIDS (MÁXIMO REFUERZO) ---
         const senderJid = m.sender;
         const chatJid = m.chat;
         const botJid = conn.user?.jid || ''; 
 
-        // CRÍTICO: DOBLE VERIFICACIÓN DEL JID ANTES DE ACCEDER A LA BD
         if (!chatJid || !chatJid.includes('@')) {
              console.error(`JID del chat inválido (REFORZADO): ${chatJid}. Mensaje descartado.`);
-             return; // Esto detiene el TypeError
+             return; 
         }
         
         if (!botJid) {
              console.error('El Bot JID es undefined. No se puede inicializar la configuración.');
-             // No retornamos aquí para permitir que el código continúe si no se usa conn.user.jid, pero es una advertencia grave.
         }
         
-        // Inicialización de chat (SAFE ACCESS - Usa ||={} para evitar el TypeError)
         global.db.data.chats[chatJid] ||= {
             isBanned: false,
             sAutoresponder: '',
@@ -215,9 +198,9 @@ export async function handler(chatUpdate, store) {
             per: [],
         };
 
-        // Inicialización de settings del bot (SAFE ACCESS - Usa settingsJid, que debe ser botJid)
-        if (botJid) {
-            global.db.data.settings[botJid] ||= {
+        const settingsJid = conn.user.jid;
+        if (settingsJid) {
+            global.db.data.settings[settingsJid] ||= {
                 self: false,
                 restrict: true,
                 jadibotmd: true,
@@ -227,16 +210,14 @@ export async function handler(chatUpdate, store) {
                 status: 0
             };
         } else {
-             // Si botJid es nulo, no podemos inicializar settings. Se usará un objeto vacío temporalmente.
-             global.db.data.settings['unknown'] ||= {};
+            console.error('Advertencia: No se pudo inicializar settings porque el botJid es nulo.');
         }
 
-        // Inicialización de usuario (SAFE ACCESS)
         global.db.data.users[senderJid] ||= {};
         
         const user = global.db.data.users[senderJid];
         const chat = global.db.data.chats[chatJid];
-        const settings = botJid ? global.db.data.settings[botJid] : global.db.data.settings['unknown'];
+        const settings = botJid ? global.db.data.settings[botJid] : {};
 
         if (user) {
             if (!('exp' in user) || !isNumber(user.exp)) user.exp = 0;
@@ -244,12 +225,10 @@ export async function handler(chatUpdate, store) {
             if (!('muto' in user)) user.muto = false; 
         }
 
-        // Roles y Permisos
         const detectwhat = m.sender.includes('@lid') ? '@lid' : '@s.whatsapp.net';
         const isROwner = global.owner.map(([number]) => number.replace(/[^0-9]/g, '') + detectwhat).includes(senderJid);
         const isOwner = isROwner || m.fromMe;
 
-        // Condiciones de bloqueo/descarte
         if (m.isBaileys || opts['nyimak']) return;
         if (!isROwner && opts['self']) return;
         if (opts['swonly'] && m.chat !== 'status@broadcast') return;
@@ -257,7 +236,6 @@ export async function handler(chatUpdate, store) {
 
         let senderLid, botLid, groupMetadata, participants, user2, bot, isRAdmin, isAdmin, isBotAdmin;
 
-        // Lógica de Grupos
         if (m.isGroup) {
             groupMetadata = (conn.chats[m.chat] || {}).metadata || await conn.groupMetadata(m.chat).catch(_ => null) || {};
             
@@ -299,9 +277,7 @@ export async function handler(chatUpdate, store) {
         let text = m.text;
         let args = [];
 
-        // --- Bucle de Plugins ---
         for (const name in global.plugins) {
-            // Control de tiempo para evitar bloqueos
             if (Date.now() - startTime > MAX_EXECUTION_TIME) {
                  console.warn('Handler detenido: Excedido el tiempo de ejecución máximo.');
                  return;
@@ -312,7 +288,6 @@ export async function handler(chatUpdate, store) {
 
             const __filename = join(___dirname, name);
 
-            // Ejecución de plugin.all
             if (typeof plugin.all === 'function') {
                 try {
                     await plugin.all.call(conn, m, {
@@ -326,7 +301,6 @@ export async function handler(chatUpdate, store) {
                 }
             }
 
-            // Restricción de Admin si opts['restrict'] está desactivado
             if (!opts['restrict'] && plugin.tags && plugin.tags.includes('admin')) {
                 continue;
             }
@@ -376,7 +350,6 @@ export async function handler(chatUpdate, store) {
                 if (!isNewDetection) continue;
             }
 
-            // Ejecución de plugin.before
             if (typeof plugin.before === 'function') {
                 const extraBefore = {
                     match, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
@@ -412,7 +385,6 @@ export async function handler(chatUpdate, store) {
 
             m.plugin = name;
 
-            // Bloqueo por Baneo o modo Admin
             if (chat?.isBanned && !isROwner) return;
             if (chat?.modoadmin && !isOwner && !isROwner && m.isGroup && !isAdmin) return;
 
@@ -440,7 +412,6 @@ export async function handler(chatUpdate, store) {
             m.isCommand = true;
             m.usedPrefix = usedPrefix;
 
-            // Lógica de experiencia
             const xp = 'exp' in plugin ? parseInt(plugin.exp) : 10;
             m.exp += xp;
 
@@ -448,7 +419,6 @@ export async function handler(chatUpdate, store) {
                 match, usedPrefix, noPrefix: text, args, command, text, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
             };
 
-            // --- EJECUCIÓN DEL PLUGIN ---
             try {
                 await plugin.call(conn, m, extra);
             } catch (e) {
@@ -459,7 +429,6 @@ export async function handler(chatUpdate, store) {
                 const errorText = format(e).replace(new RegExp(Object.values(global.APIKeys).join('|'), 'g'), 'Administrador');
                 m.reply(errorText);
             } finally {
-                // Ejecución de plugin.after
                 if (typeof plugin.after === 'function') {
                     try {
                         await plugin.after.call(conn, m, extra);
@@ -475,7 +444,6 @@ export async function handler(chatUpdate, store) {
         console.error('Error no capturado en handler:', e);
         await sendUniqueError(conn, e, 'Handler Global', m); 
     } finally {
-        // --- Lógica Final y Actualización de Stats/BD ---
         if (m) {
             const finalUser = global.db.data.users[m.sender];
             if (finalUser) {
@@ -502,7 +470,6 @@ export async function handler(chatUpdate, store) {
     }
 }
 
-// --- Fallbacks y Watcher ---
 global.dfail = (type, m, conn) => {
     const messages = {
         rowner: `
