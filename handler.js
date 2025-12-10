@@ -77,9 +77,10 @@ function smsg(conn, m) {
         m.chat = normalizeJidSafe(remoteJid); 
         m.fromMe = m.key?.fromMe;
         
-        const botJid = conn?.user?.jid || ''; 
+        // Obtener JID del bot de forma segura
+        const botJid = conn?.user?.jid || global.conn?.user?.jid || ''; 
         if (!botJid) {
-             return null;
+             // Permitimos pasar el mensaje para que el handler pueda intentar cargar la DB si falla.
         }
         
         m.sender = normalizeJidSafe(m.key?.fromMe ? botJid : m.key?.participant || remoteJid);
@@ -113,7 +114,8 @@ function smsg(conn, m) {
 }
 
 function getSafeChatData(jid) {
-    if (!global.db.data || !global.db.data.chats) {
+    // BLINDAJE CRÍTICO: Si la DB no está cargada (undefined), devolvemos null para evitar el TypeError
+    if (!global.db || !global.db.data || !global.db.data.chats) {
         return null; 
     }
     
@@ -154,6 +156,8 @@ export async function handler(chatUpdate) {
     if (!m || !m.key || !m.message || !m.key.remoteJid) return;
     
     const botJid = conn.user?.jid; 
+    // Si el JID no está disponible, descartamos para evitar el error grave, 
+    // pero la corrección en index.js debería evitar que esto suceda si la conexión está abierta.
     if (!botJid) {
         return; 
     }
@@ -170,8 +174,10 @@ export async function handler(chatUpdate) {
         return; 
     } 
 
+    // Revisión y carga de DB, en caso de fallo crítico de sincronización
     if (global.db.data == null) {
         try {
+            // Intentar cargar la DB si se detecta nula, aunque debería estar lista en index.js
             await global.loadDatabase();
         } catch (e) {
             await sendUniqueError(conn, e, 'Handler Init LoadDB', m);
@@ -209,6 +215,7 @@ export async function handler(chatUpdate) {
         const chatJid = m.chat;
 
         const chat = getSafeChatData(chatJid);
+        // Descartamos si no se pudo leer la DB
         if (chat === null) {
             return;
         }
@@ -227,7 +234,6 @@ export async function handler(chatUpdate) {
                 status: 0
             };
             settings = global.db.data.settings[settingsJid];
-        } else {
         }
 
         global.db.data.users[senderJid] ||= {};
@@ -301,6 +307,7 @@ export async function handler(chatUpdate) {
 
             const __filename = join(___dirname, name);
 
+            // 1. EJECUCIÓN DEL AUTORESPONDER (plugin.all)
             if (typeof plugin.all === 'function') {
                 try {
                     await plugin.all.call(conn, m, {
@@ -312,7 +319,9 @@ export async function handler(chatUpdate) {
                     await sendUniqueError(conn, e, `plugin.all: ${name}`, m);
                 }
             }
-
+            
+            // ... (Resto de los filtros de prefijo y permisos) ...
+            
             if (!opts['restrict'] && plugin.tags && plugin.tags.includes('admin')) {
                 continue;
             }
@@ -362,11 +371,13 @@ export async function handler(chatUpdate) {
                 if (!isNewDetection) continue;
             }
 
+            // 2. EJECUCIÓN DEL FILTRO ANTICOMANDOS (plugin.before)
             if (typeof plugin.before === 'function') {
                 const extraBefore = {
                     match, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
                 };
                 try {
+                    // Si plugin.before retorna true, el ciclo se detiene aquí (silenciosamente)
                     if (await plugin.before.call(conn, m, extraBefore)) {
                         continue;
                     }
@@ -396,6 +407,7 @@ export async function handler(chatUpdate) {
 
             m.plugin = name;
 
+            // Filtros de Baneo
             if (chat?.isBanned && !isROwner) return;
             if (chat?.modoadmin && !isOwner && !isROwner && m.isGroup && !isAdmin) return;
 
