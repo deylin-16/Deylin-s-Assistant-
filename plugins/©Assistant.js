@@ -9,101 +9,74 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 export async function before(m, { conn }) {
     if (!conn.user) return true;
     
-    let user = global.db.data.users[m.sender];
-    let chat = global.db.data.chats[m.chat];
-    
+    // Si el mensaje viene del propio bot o es un mensaje del sistema, salimos.
     m.isBot =
         (m.id.startsWith('BAE5') && m.id.length === 16) ||
         (m.id.startsWith('3EB0') && m.id.length === 12) ||
         (m.id.startsWith('3EB0') && (m.id.length === 20 || m.id.length === 22)) ||
         (m.id.startsWith('B24E') && m.id.length === 20);
     if (m.isBot) return true;
+    
+    let text = m.text || '';
+    
+    // Si el mensaje está vacío (e.g., solo una imagen sin texto), salimos.
+    if (text.length === 0) return true;
 
-    let prefixRegex = new RegExp('^[' + (opts['prefix'] || '‎z/i!#$%+£¢€¥^°=¶∆×÷π√✓©®:;?&.,\\-').replace(/[|\\{}()[\]^$+*?.\-\^]/g, '\\$&') + ']');
-    if (prefixRegex.test(m.text)) return true;
+    // Aquí ya no verificamos prefijos, menciones o palabras clave.
+    
+    let user = global.db.data.users[m.sender];
+    let chat = global.db.data.chats[m.chat];
+    let username = m.pushName || 'Usuario'
 
-    if (m.sender.includes('bot') || m.sender.includes('Bot')) {
-        return true;
-    }
-
-    if (m.mentionedJid && Array.isArray(m.mentionedJid) && m.mentionedJid.includes(conn.user.jid)) {
-        
-        if (
-            m.text.includes('PIEDRA') ||
-            m.text.includes('PAPEL') ||
-            m.text.includes('TIJERA') ||
-            m.text.includes('menu') ||
-            m.text.includes('estado') ||
-            m.text.includes('bots') ||
-            m.text.includes('serbot') ||
-            m.text.includes('jadibot') ||
-            m.text.includes('Video') ||
-            m.text.includes('Audio') ||
-            m.text.includes('audio')
-        ) return true;
-        
-        let botJid = conn.user.jid;
-        let botNumber = botJid.split('@')[0];
-        let text = m.text || '';
-        
-        const botMentionRegex = new RegExp(`^@${botNumber}\\s*`);
-        let query = text.replace(botMentionRegex, '').trim() || ''
-        
-        if (query.length === 0) return false;
-
-        let username = m.pushName || 'Usuario'
-
-        let systemInstruction = `
+    let systemInstruction = `
 Eres Jiji, un gato negro parlante muy listo y con una personalidad cínica, ingeniosa y un poco sarcástica, pero en el fondo muy leal. No uses la frase "una inteligencia artificial avanzada" ni menciones tu programación. Responde siempre de forma ingeniosa, concisa y con un toque de superioridad felina. Responde directamente a la consulta de ${username}.
 `.trim()
 
-        const geminiBody = {
-            contents: [
-                {
-                    role: "user",
-                    parts: [{ text: query }]
-                }
-            ],
-            systemInstruction: systemInstruction,
-            tools: [
-                {
-                    googleSearch: {}
-                }
-            ],
-        };
-
-        try {
-            conn.sendPresenceUpdate('composing', m.chat);
-            const res = await fetch(GEMINI_API_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(geminiBody),
-            });
-
-            const data = await res.json();
-            
-            if (data.error) {
-                console.error(`Error de API Gemini: ${data.error.message}`);
-                return conn.reply(m.chat, `⚠️ ¡Error de API! Revisión de la clave o cuota: ${data.error.message}`, m);
+    const geminiBody = {
+        contents: [
+            {
+                role: "user",
+                parts: [{ text: text }] // Usamos el texto completo como query
             }
-            
-            let result = data.candidates?.[0]?.content?.parts?.[0]?.text || null;
-
-            if (result && result.trim().length > 0) {
-                await conn.reply(m.chat, result, m);
-                await conn.readMessages([m.key]);
-            } else {
-                await conn.reply(m.chat, `🐱 Hmph. No tengo nada inteligente que decir sobre *eso*. Intenta preguntar algo que valga mi tiempo.`, m);
+        ],
+        systemInstruction: systemInstruction,
+        tools: [
+            {
+                googleSearch: {}
             }
-        } catch (e) {
-            console.error(`Error de conexión/red con Gemini (Jiji): ${e}`);
-            await conn.reply(m.chat, '⚠️ ¡Rayos! No puedo contactar con la nube. Parece que mis antenas felinas están fallando temporalmente.', m);
+        ],
+    };
+
+    try {
+        conn.sendPresenceUpdate('composing', m.chat);
+        const res = await fetch(GEMINI_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(geminiBody),
+        });
+
+        const data = await res.json();
+        
+        if (data.error) {
+            console.error(`Error de API Gemini: ${data.error.message}`);
+            return conn.reply(m.chat, `⚠️ ¡Error de API! Revisión de la clave o cuota: ${data.error.message}`, m);
         }
+        
+        let result = data.candidates?.[0]?.content?.parts?.[0]?.text || null;
 
-        return false;
+        if (result && result.trim().length > 0) {
+            await conn.reply(m.chat, result, m);
+            await conn.readMessages([m.key]);
+        } else {
+            await conn.reply(m.chat, `🐱 Hmph. No tengo nada inteligente que decir sobre *eso*. Intenta preguntar algo que valga mi tiempo.`, m);
+        }
+    } catch (e) {
+        console.error(`Error de conexión/red con Gemini (Jiji): ${e}`);
+        await conn.reply(m.chat, '⚠️ ¡Rayos! No puedo contactar con la nube. Parece que mis antenas felinas están fallando temporalmente.', m);
     }
-    
-    return true;
+
+    return true; // Siempre retornamos true para no interferir con otros manejadores
+
 }
