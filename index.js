@@ -347,18 +347,44 @@ global.plugins = {};
 
 async function filesInit() {
     console.log(chalk.bold.blueBright('Cargando Plugins...'));
-    for (const filename of readdirSync(pluginFolder).filter(pluginFilter)) {
-        try {
-            const file = global.__filename(join(pluginFolder, filename));
-            const module = await import(file);
-            global.plugins[filename] = module.default || module;
-        } catch (e) {
-            console.error(chalk.bold.red(`❌ ERROR al cargar plugin '${filename}':`), e);
-            delete global.plugins[filename];
+    global.plugins = {};
+    const pluginsDir = join(global.__dirname(import.meta.url), 'plugins');
+    
+    // Función para leer directorios recursivamente
+    const readDirRecursive = (dir) => {
+        const files = readdirSync(dir, { withFileTypes: true });
+        for (const file of files) {
+            const filePath = join(dir, file.name);
+            if (file.isDirectory()) {
+                readDirRecursive(filePath); // Llamada recursiva para subcarpetas
+            } else if (pluginFilter(file.name)) {
+                try {
+                    const module = import(pathToFileURL(filePath).href);
+                    global.plugins[file.name] = (module.default || module);
+                } catch (e) {
+                    console.error(chalk.bold.red(`❌ ERROR al cargar plugin '${file.name}':`), e);
+                }
+            }
         }
+    };
+    
+    readDirRecursive(pluginsDir);
+
+    // Corregimos la asignación final de plugins para que sean importables correctamente
+    let loadedPlugins = {};
+    for (const filename in global.plugins) {
+         try {
+            const module = await global.plugins[filename];
+            loadedPlugins[filename] = module.default || module;
+         } catch(e) {
+            console.error(chalk.bold.red(`❌ ERROR final de carga en '${filename}':`), e);
+         }
     }
+    global.plugins = loadedPlugins;
+    
     console.log(chalk.bold.greenBright(`✅ ${Object.keys(global.plugins).length} Plugins cargados.`));
 }
+
 
 global.reload = async (_ev, filename) => {
     if (pluginFilter(filename)) {
