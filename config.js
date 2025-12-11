@@ -18,15 +18,26 @@ global.fetch = fetch
 global.axios = axios
 global.moment = moment 
 
+let Names = [
+    'ᴊɪᴊɪ - ᴀssɪsᴛᴀɴᴛ', 
+    '𝕵𝖎𝖏𝖎 - 𝕬𝖘𝖘𝖎𝖘𝖙𝖆𝖓𝖙', 
+    '🄹🄸🄹🄸 - 🄰🅂🅂🄸🅂🅃🄰🄽🅃', 
+    '𝒥𝒾𝒿𝒾 - 𝒜𝓈𝓈𝒾𝓈𝓉𝒶𝓃𝓉', 
+    '🅹🅸🅹🅸 - 🄰🅂🅂🄸🅂🅃🄰🅽🆃', 
+    '𝐉𝐢𝐣𝐢 - 𝐀𝐬𝐬𝐢𝐬𝐭𝐚𝐧𝐭', 
+    'Ⓙⓘⓙⓘ - Ⓐⓢⓢⓘⓢⓣⓐⓝⓣ', 
+    '𝙹𝙸𝙹𝙸 - 𝙰𝚂𝚂𝙸𝚂𝚃𝙰𝙽𝚃', 
+    '¡ſıſı - ʇuɐʇsıssɐ', 
+    'J I J I - A S S I S T A N T', 
+];
+
+let randomIndex = Math.floor(Math.random() * Names.length);
+global.bot = Names[randomIndex];
+
   
 
 
-/*async function getRandomChannel() {
-let randomIndex = Math.floor(Math.random() * canalIdM.length)
-let id = canalIdM[randomIndex]
-let name = canalNombreM[randomIndex]
-return { id, name }
-}*/
+
 
 
 let file = fileURLToPath(import.meta.url)
