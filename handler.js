@@ -1,84 +1,329 @@
+import { smsg } from './lib/simple.js';
+import { format } from 'util';
+import { fileURLToPath } from 'url';
+import path, { join } from 'path';
+import { unwatchFile, watchFile } from 'fs';
 import chalk from 'chalk';
-import urlRegex from 'url-regex-safe';
+import ws from 'ws';
+import fetch from 'node-fetch';
 
-function minimalSmsg(conn, m) {
-    if (!m || !m.key || !m.key.remoteJid) return null;
-    const botJid = conn.user?.jid || global.conn?.user?.jid || '';
-    if (!botJid) return null;
-    try {
-        m.chat = conn.normalizeJid(m.key.remoteJid);
-        m.sender = conn.normalizeJid(m.key.fromMe ? botJid : m.key.participant || m.key.remoteJid);
-        m.fromMe = m.key.fromMe;
-        m.isGroup = m.chat.endsWith('@g.us');
-        m.text = m.message?.extendedTextMessage?.text || m.message?.conversation || m.message?.imageMessage?.caption || m.message?.videoMessage?.caption || '';
-        m.text = m.text ? m.text.replace(/[\u200e\u200f]/g, '').trim() : '';
-        m.isCommand = (global.prefix instanceof RegExp ? global.prefix.test(m.text.trim()[0]) : m.text.startsWith(global.prefix || '!') );
-        m.isMedia = !!(m.message?.imageMessage || m.message?.videoMessage || m.message?.audioMessage || m.message?.stickerMessage || m.message?.documentMessage);
-        return m;
-    } catch (e) {
-        return null;
-    }
-}
+const isNumber = x => typeof x === 'number' && !isNaN(x);
 
-async function menu(conn, m) {
-    const texto = `Hola, soy el bot Kirito.
-    
-✅ *¡Comando Ejecutado con Éxito!*
-    
-El bot ha respondido. Esto confirma que el bot está totalmente funcional.
-    
-*Ahora puedes reintroducir tu lógica de plugins.*`;
-    
-    await conn.reply(m.chat, texto, m);
+async function getLidFromJid(id, connection) {
+    if (id.endsWith('@lid')) return id;
+    const res = await connection.onWhatsApp(id).catch(() => []);
+    return res[0]?.lid || id;
 }
 
 export async function handler(chatUpdate) {
+    this.uptime = this.uptime || Date.now();
     const conn = this;
-    
+
+    if (!chatUpdate || !chatUpdate.messages || chatUpdate.messages.length === 0) {
+        return;
+    }
+
+    let m = chatUpdate.messages[chatUpdate.messages.length - 1];
+    if (!m) return;
+
+    m = smsg(conn, m) || m;
+    if (!m) return;
+
+    if (global.db.data == null) {
+        await global.loadDatabase();
+    }
+
+    conn.processedMessages = conn.processedMessages || new Map();
+    const now = Date.now();
+    const lifeTime = 9000;
+
+    const id = m.key.id;
+
+    if (conn.processedMessages.has(id)) {
+        return;
+    }
+
+    conn.processedMessages.set(id, now);
+
+    for (const [msgId, time] of conn.processedMessages) {
+        if (now - time > lifeTime) {
+            conn.processedMessages.delete(msgId);
+        }
+    }
+
     try {
-        if (!chatUpdate || !chatUpdate.messages || chatUpdate.messages.length === 0) return;
-        let m = chatUpdate.messages[chatUpdate.messages.length - 1];
-        if (!m || !m.key || !m.message || !m.key.remoteJid) return;
-        if (!conn.user?.jid) return; 
 
-        if (m.message) {
-            m.message = (Object.keys(m.message)[0] === 'ephemeralMessage') ? m.message.ephemeralMessage.message : m.message;
+
+        m.exp = 0;
+        m.coin = false;
+
+        const senderJid = m.sender;
+        const chatJid = m.chat;
+
+        global.db.data.chats[chatJid] ||= {
+            isBanned: false,
+            sAutoresponder: '',
+            welcome: true,
+            autolevelup: false,
+            autoresponder: false,
+            delete: false,
+            autoAceptar: false,
+            autoRechazar: false,
+            detect: true,
+            antiBot: false,
+            modoadmin: false,
+            antiLink: true,
+            nsfw: false,
+            expired: 0,
+            autoresponder2: false,
+            per: [],
+        };
+
+        const settingsJid = conn.user.jid;
+        global.db.data.settings[settingsJid] ||= {
+            self: false,
+            restrict: true,
+            jadibotmd: true,
+            antiPrivate: false,
+            autoread: false,
+            soloParaJid: false,
+            status: 0
+        };
+
+        const user = global.db.data.users[senderJid] || {};
+        const chat = global.db.data.chats[chatJid];
+        const settings = global.db.data.settings[settingsJid];
+
+
+        if (typeof global.db.data.users[senderJid] !== 'object') global.db.data.users[senderJid] = {};
+        if (user) {
+            if (!('exp' in user) || !isNumber(user.exp)) user.exp = 0;
+            if (!('coin' in user) || !isNumber(user.coin)) user.coin = 0;
+            if (!('muto' in user)) user.muto = false; 
+        } else {
+            global.db.data.users[senderJid] = { exp: 0, coin: 0, muto: false };
         }
 
-        m = minimalSmsg(conn, m); 
-        if (!m || !m.chat || !m.sender) return; 
-        
-        // --- INICIO DE IMPRESIÓN FORZADA ---
-        try {
-            const senderName = m.sender.split('@')[0]; 
-            const chatName = m.isGroup ? m.chat.substring(0, 10) : 'Privado';
+        const detectwhat = m.sender.includes('@lid') ? '@lid' : '@s.whatsapp.net';
+        const isROwner = global.owner.map(([number]) => number.replace(/[^0-9]/g, '') + detectwhat).includes(senderJid);
+        const isOwner = isROwner || m.fromMe;
 
-            const now = new Date();
-            const formattedTime = now.toLocaleString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const logLine = chalk.bold.green('✅ EVENTO RECIBIDO ') +
-                            chalk.hex('#FF4500')(`${chatName}: `) +
-                            chalk.hex('#FFFF00')(`${senderName}: `) +
-                            (m.text.substring(0, 40));
+        if (m.isBaileys || opts['nyimak']) return;
+        if (!isROwner && opts['self']) return;
+        if (opts['swonly'] && m.chat !== 'status@broadcast') return;
+        if (typeof m.text !== 'string') m.text = '';
 
-            console.log(logLine);
-            
-        } catch (printError) {
-            console.error(chalk.red('Error al imprimir mensaje en consola:'), printError);
+        let senderLid, botLid, botJid, groupMetadata, participants, user2, bot, isRAdmin, isAdmin, isBotAdmin;
+
+        if (m.isGroup) {
+            groupMetadata = (conn.chats[m.chat] || {}).metadata || await conn.groupMetadata(m.chat).catch(_ => null) || {};
+            participants = groupMetadata.participants || [];
+            botJid = conn.user.jid;
+
+            [senderLid, botLid] = await Promise.all([
+                getLidFromJid(m.sender, conn),
+                getLidFromJid(botJid, conn)
+            ]);
+
+            user2 = participants.find(p => p.id === senderLid || p.jid === senderJid) || {};
+            bot = participants.find(p => p.id === botLid || p.id === botJid) || {};
+
+            isRAdmin = user2?.admin === "superadmin";
+            isAdmin = isRAdmin || user2?.admin === "admin";
+            isBotAdmin = !!bot?.admin;
+        } else {
+            senderLid = m.sender;
+            botLid = conn.user.jid;
+            botJid = conn.user.jid;
+            groupMetadata = {};
+            participants = [];
+            user2 = {};
+            bot = {};
+            isRAdmin = false;
+            isAdmin = false;
+            isBotAdmin = false;
         }
-        // --- FIN DE IMPRESIÓN ---
-        
-        // Lógica de comando manual de prueba
-        if (m.isCommand) {
-             const command = m.text.toLowerCase().split(/\s+/)[0].replace(global.prefix || '!', '');
-             if (command === 'menu' || command === 'up') {
-                 return await menu(conn, m);
-             }
-        }
-        
 
+        const ___dirname = path.join(path.dirname(fileURLToPath(import.meta.url)), './plugins');
+        let usedPrefix = '';
+
+        for (const name in global.plugins) {
+            const plugin = global.plugins[name];
+            if (!plugin || plugin.disabled) continue;
+
+            const __filename = join(___dirname, name);
+
+            if (typeof plugin.all === 'function') {
+                try {
+                    await plugin.all.call(conn, m, {
+                        chatUpdate,
+                        __dirname: ___dirname,
+                        __filename
+                    });
+                } catch (e) {
+                    console.error(`Error en plugin.all de ${name}:`, e);
+                }
+            }
+
+            if (!opts['restrict'] && plugin.tags && plugin.tags.includes('admin')) {
+                continue;
+            }
+
+            const str2Regex = str => str.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&');
+            let _prefix = plugin.customPrefix ? plugin.customPrefix : conn.prefix ? conn.prefix : global.prefix;
+
+            const match = (
+                _prefix instanceof RegExp ?
+                    [[_prefix.exec(m.text), _prefix]] :
+                    Array.isArray(_prefix) ?
+                        _prefix.map(p => {
+                            const re = p instanceof RegExp ? p : new RegExp(str2Regex(p));
+                            return [re.exec(m.text), re];
+                        }) :
+                        typeof _prefix === 'string' ?
+                            [[new RegExp(str2Regex(_prefix)).exec(m.text), new RegExp(str2Regex(_prefix))]] :
+                            [[[], new RegExp()]]
+            ).find(p => p[0]);
+
+            if (typeof plugin.before === 'function') {
+                const extraBefore = {
+                    match, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
+                };
+                if (await plugin.before.call(conn, m, extraBefore)) {
+                    continue;
+                }
+            }
+
+            if (typeof plugin !== 'function' || !match) continue;
+
+            usedPrefix = match[0][0];
+            let noPrefix = m.text.replace(usedPrefix, '');
+            let [command, ...args] = noPrefix.trim().split(/\s+/).filter(v => v);
+            let text = args.join(' ');
+            command = (command || '').toLowerCase();
+
+            const fail = plugin.fail || global.dfail;
+            const isAccept = plugin.command instanceof RegExp ?
+                plugin.command.test(command) :
+                Array.isArray(plugin.command) ?
+                    plugin.command.some(cmd => cmd instanceof RegExp ? cmd.test(command) : cmd === command) :
+                    typeof plugin.command === 'string' ?
+                        plugin.command === command :
+                        false;
+
+            global.comando = command;
+
+            if (settings.soloParaJid && m.sender !== settings.soloParaJid) {
+                continue;
+            }
+
+
+
+            if (!isAccept) continue;
+
+            m.plugin = name;
+
+            if (chat?.isBanned && !isROwner) return;
+            if (chat?.modoadmin && !isOwner && !isROwner && m.isGroup && !isAdmin) return;
+
+            const checkPermissions = (perm) => {
+                const permissions = {
+                    rowner: isROwner,
+                    owner: isOwner,
+                    group: m.isGroup,
+                    botAdmin: isBotAdmin,
+                    admin: isAdmin,
+                    private: !m.isGroup,
+                    restrict: !opts['restrict']
+                };
+                return permissions[perm];
+            };
+
+            const requiredPerms = ['rowner', 'owner', 'mods', 'premium', 'group', 'botAdmin', 'admin', 'private', 'restrict'];
+            for (const perm of requiredPerms) {
+                if (plugin[perm] && !checkPermissions(perm)) {
+                    fail(perm, m, conn);
+                    return;
+                }
+            }
+
+            m.isCommand = true;
+            const xp = 'exp' in plugin ? parseInt(plugin.exp) : 10;
+            m.exp += xp;
+
+            const extra = {
+                match, usedPrefix, noPrefix, args, command, text, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
+            };
+
+            try {
+                await plugin.call(conn, m, extra);
+            } catch (e) {
+                m.error = e;
+                console.error(`Error de ejecución en plugin ${name}:`, e);
+                const errorText = format(e).replace(new RegExp(Object.values(global.APIKeys).join('|'), 'g'), 'Administrador');
+                m.reply(errorText);
+            } finally {
+                if (typeof plugin.after === 'function') {
+                    try {
+                        await plugin.after.call(conn, m, extra);
+                    } catch (e) {
+                        console.error(`Error en plugin.after de ${name}:`, e);
+                    }
+                }
+            }
+        }
 
     } catch (e) {
-        console.error(chalk.bold.bgRed('❌ ERROR CRÍTICO NO MANEJADO EN HANDLER ❌'));
-        console.error(e);
+        console.error('Error no capturado en handler:', e);
+    } finally {
+        if (m) {
+            const finalUser = global.db.data.users[m.sender];
+            if (finalUser) {
+                if (finalUser.muto) {
+                    await conn.sendMessage(m.chat, { delete: m.key });
+                }
+                finalUser.exp = (finalUser.exp || 0) + (m.exp || 0);
+                finalUser.coin = (finalUser.coin || 0) - (m.coin ? m.coin * 1 : 0);
+            }
+
+            if (m.plugin) {
+                const stats = global.db.data.stats;
+                const now = Date.now();
+                stats[m.plugin] ||= { total: 0, success: 0, last: 0, lastSuccess: 0 };
+                const stat = stats[m.plugin];
+                stat.total += 1;
+                stat.last = now;
+                if (!m.error) {
+                    stat.success += 1;
+                    stat.lastSuccess = now;
+                }
+            }
+        }
     }
 }
+
+global.dfail = (type, m, conn) => {
+    const messages = {
+        rowner: `Solo con Deylin-Eliac hablo de eso w.`,
+        owner: `Solo con Deylin-Eliac hablo de eso w.`,
+        group: `Si quieres hablar de eso solo en grupos bro.`,
+        private: `De ésto solo habló en privado güey.`,
+        admin: `Solo los administradores me pueden decir que hacer.`,
+        botAdmin: `Dame admin bro para seguir.`,
+    };
+    if (messages[type]) {
+        conn.reply(m.chat, messages[type], m);
+    }
+};
+
+let file = global.__filename(import.meta.url, true);
+watchFile(file, async () => {
+    unwatchFile(file);
+    console.log(chalk.magenta("Se actualizo 'handler.js'"));
+    if (global.conns && global.conns.length > 0) {
+        const users = global.conns.filter((conn) => conn.user && conn.ws.socket && conn.ws.socket.readyState !== ws.CLOSED);
+        for (const user of users) {
+            user.subreloadHandler(false);
+        }
+    }
+});
