@@ -10,8 +10,8 @@ let handler = m => m
 
 handler.all = async function (m, { conn }) {
 
-  if (!conn.user) return
-  
+  if (!conn.user) return // CORRECCIÓN CRÍTICA
+
   m.isBot = m.id.startsWith('BAE5') && m.id.length === 16 
           || m.id.startsWith('3EB0') && (m.id.length === 12 || m.id.length === 20 || m.id.length === 22) 
           || m.id.startsWith('B24E') && m.id.length === 20
