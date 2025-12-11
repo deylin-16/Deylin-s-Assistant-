@@ -9,27 +9,22 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 let handler = m => m
 
 handler.all = async function (m, { conn }) {
-  let user = global.db.data.users[m.sender]
-  let chat = global.db.data.chats[m.chat]
 
- 
   m.isBot = m.id.startsWith('BAE5') && m.id.length === 16 
           || m.id.startsWith('3EB0') && (m.id.length === 12 || m.id.length === 20 || m.id.length === 22) 
           || m.id.startsWith('B24E') && m.id.length === 20
   if (m.isBot) return 
-  
+
   let prefixRegex = new RegExp('^[' + (opts?.prefix || '‎z/i!#$%+£¢€¥^°=¶∆×÷π√✓©®:;?&.,\\-').replace(/[|\\{}()[\]^$+*?.\-\^]/g, '\\$&') + ']')
   if (prefixRegex.test(m.text)) return true
 
   const botJid = conn.user.jid;
   const botNumber = botJid.split('@')[0];
-  
-  
+
   let isMention = m.text && m.text.includes('@' + botNumber);
 
   if (!isMention) return 
 
-  
   let query = m.text.replace(new RegExp(`@${botNumber}`, 'g'), '').trim() || ''
   let username = m.pushName || 'Usuario'
 
