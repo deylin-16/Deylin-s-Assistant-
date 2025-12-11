@@ -326,16 +326,16 @@ global.reloadHandler = async function(restatConn) {
     global.conn.ev.on('connection.update', global.conn.connectionUpdate);
     global.conn.ev.on('creds.update', global.conn.credsUpdate);
     
-    // CORRECCIÓN CRÍTICA: Asignación directa e inmediata del listener de mensajes
-    if (global.conn.ev.listeners('messages.upsert').length === 0) {
-        global.conn.ev.on('messages.upsert', global.conn.handler);
-        isHandlerActive = true;
-        console.log(chalk.bold.yellowBright('✅ Listener de mensajes asignado directamente al Handler.'));
-    }
+    // Corrección para evitar TypeError al recargar el Handler
+if (!isHandlerActive) {
+    global.conn.ev.on('messages.upsert', global.conn.handler);
+    isHandlerActive = true;
+    console.log(chalk.bold.yellowBright('✅ Listener de mensajes asignado al Handler.'));
+}
 
-    isInit = false;
-    return true;
-};
+isInit = false;
+return true;
+
 
 const __dirname = global.__dirname(import.meta.url);
 const pluginFolder = global.__dirname(join(__dirname, './plugins')); 
