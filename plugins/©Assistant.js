@@ -9,6 +9,11 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 export async function before(m, { conn }) {
     if (!conn.user) return true;
     
+    // CORRECCIÓN CRÍTICA DE ERROR: Aseguramos que m.mentionedJid sea un array para usar .includes()
+    if (!Array.isArray(m.mentionedJid)) {
+        m.mentionedJid = m.mentionedJid ? [m.mentionedJid] : [];
+    }
+    
     let user = global.db.data.users[m.sender];
     let chat = global.db.data.chats[m.chat];
     
@@ -26,10 +31,9 @@ export async function before(m, { conn }) {
         return true;
     }
 
-    // Detección de mención usando m.mentionedJid (tomado del plugin que enviaste)
+    // El error ha sido corregido arriba, ahora la verificación es segura
     if (m.mentionedJid.includes(conn.user.jid)) {
         
-        // Excluir comandos que no deben activar la IA
         if (
             m.text.includes('PIEDRA') ||
             m.text.includes('PAPEL') ||
