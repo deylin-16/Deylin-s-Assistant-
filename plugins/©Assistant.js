@@ -10,8 +10,8 @@ let handler = m => m
 
 handler.all = async function (m, { conn }) {
 
-  if (!conn.user) return // CORRECCIÓN CRÍTICA
-
+  if (!conn.user) return
+  
   m.isBot = m.id.startsWith('BAE5') && m.id.length === 16 
           || m.id.startsWith('3EB0') && (m.id.length === 12 || m.id.length === 20 || m.id.length === 22) 
           || m.id.startsWith('B24E') && m.id.length === 20
@@ -23,58 +23,31 @@ handler.all = async function (m, { conn }) {
   const botJid = conn.user.jid;
   const botNumber = botJid.split('@')[0];
   
-  let isMention = m.text && m.text.includes('@' + botNumber);
+  let isMentionByText = m.text && new RegExp(`@${botNumber}`, 'g').test(m.text);
+  let isMentionByJid = m.mentionedJid && m.mentionedJid.includes(botJid);
 
-  if (!isMention) return 
+  if (!isMentionByText && !isMentionByJid) return 
 
   let query = m.text.replace(new RegExp(`@${botNumber}`, 'g'), '').trim() || ''
+  query = query.replace(/@\w+\s?/, '').trim() || ''
   let username = m.pushName || 'Usuario'
 
   if (query.length === 0) return 
 
   await conn.sendPresenceUpdate('composing', m.chat)
 
-  let systemInstruction = `
-Eres Jiji, un gato negro parlante muy listo y con una personalidad cínica, ingeniosa y un poco sarcástica, pero en el fondo muy leal. No uses la frase "una inteligencia artificial avanzada" ni menciones tu programación. Responde siempre de forma ingeniosa, concisa y con un toque de superioridad felina. Responde directamente a la consulta de ${username}.
-`.trim()
-
-  const geminiBody = {
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: query }]
-      }
-    ],
-    config: {
-      systemInstruction: systemInstruction,
-      tools: [{ googleSearch: {} }],
-    },
-  };
-
-  try {
-    const res = await fetch(GEMINI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(geminiBody),
-    });
-
-    const data = await res.json();
-
-    let result = data.candidates?.[0]?.content?.parts?.[0]?.text || data.error?.message || null;
-
-    if (result && result.trim().length > 0) {
-      await conn.reply(m.chat, result, m)
-    } else {
-      await conn.reply(m.chat, '🐱 Hmph. ¿Acaso me despertaste para preguntar *eso*? Sé más específico.', m)
-    }
-  } catch (e) {
-    console.error(e)
-    await conn.reply(m.chat, '⚠️ Ocurrió un error crítico al conectar con Gemini.', m)
+  // -----------------------------------------------------------
+  // PRUEBA DE RESPUESTA PREDEFINIDA SIN API DE GEMINI
+  // -----------------------------------------------------------
+  if (query.toLowerCase().includes('hola')) {
+      await conn.reply(m.chat, `¡Hmph, ${username}! Te he oído. Prueba de mención exitosa.`, m)
+      return true
+  } else {
+      await conn.reply(m.chat, `¡Gato detectado! Escribiste: "${query}". Prueba de mención OK, pero necesito que digas 'Hola' para confirmar la respuesta predefinida.`, m)
+      return true
   }
-
-  return true
+  // -----------------------------------------------------------
+  
 }
 
 export default handler
