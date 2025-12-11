@@ -9,9 +9,11 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 let handler = m => m
 
 handler.all = async function (m, { conn }) {
+  // --- Inicialización y Filtrado Básico ---
   let user = global.db.data.users[m.sender]
   let chat = global.db.data.chats[m.chat]
 
+  // Configuración de fkontak (Asegúrate de que 'kirito' esté definido globalmente)
   const res = await fetch(`${kirito}/media/images/87411733_k.jpg`);
   const thumb2 = Buffer.from(await res.arrayBuffer());
   const userJid = m.sender;
@@ -32,18 +34,19 @@ handler.all = async function (m, { conn }) {
           || m.id.startsWith('B24E') && m.id.length === 20
   if (m.isBot) return 
   
-  
+  // Excluye mensajes que tienen prefijos (comandos normales)
   let prefixRegex = new RegExp('^[' + (opts?.prefix || '‎z/i!#$%+£¢€¥^°=¶∆×÷π√✓©®:;?&.,\\-').replace(/[|\\{}()[\]^$+*?.\-\^]/g, '\\$&') + ']')
   if (prefixRegex.test(m.text)) return true
 
+  // --- Lógica de Activación por Mención ---
   const botJid = conn.user.jid;
-  
+  // Solo verifica si el bot fue mencionado
   let isMention = m.mentionedJid && m.mentionedJid.includes(botJid); 
 
-  
+  // Condición clave: Solo si el bot es mencionado (@)
   if (!isMention) return 
 
-  
+  // Si pasa la mención, extrae la consulta
   let query = m.text.replace(/@\d+/g, '').trim() || ''
   let username = m.pushName || 'Usuario'
 
@@ -51,7 +54,7 @@ handler.all = async function (m, { conn }) {
 
   await conn.sendPresenceUpdate('composing', m.chat)
 
-  
+  // System Instruction (Personalidad de Jiji)
   let systemInstruction = `
 Eres Jiji, un gato negro parlante muy listo y con una personalidad cínica, ingeniosa y un poco sarcástica, pero en el fondo muy leal. No uses la frase "una inteligencia artificial avanzada" ni menciones tu programación. Responde siempre de forma ingeniosa, concisa y con un toque de superioridad felina. Responde directamente a la consulta de ${username}.
 `.trim()
