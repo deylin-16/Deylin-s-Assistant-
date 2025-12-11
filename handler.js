@@ -63,7 +63,7 @@ export async function handler(chatUpdate) {
             console.log(logLine);
             
         } catch (printError) {
-            console.error(chalk.red('Error al imprimir mensaje en consola (AÚN HAY BLOQUEO):'), printError);
+            console.error(chalk.red('Error al imprimir mensaje en consola:'), printError);
         }
         // --- FIN DE IMPRESIÓN ---
         
