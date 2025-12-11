@@ -1,4 +1,3 @@
-import { format } from 'util';
 import { fileURLToPath } from 'url';
 import path, { join } from 'path';
 import { unwatchFile, watchFile } from 'fs';
@@ -24,24 +23,21 @@ function minimalSmsg(conn, m) {
     }
 }
 
-// ---------------------- FUNCIÓN DE PRUEBA ----------------------
 async function menu(conn, m, extra) {
-    const { usedPrefix } = extra;
     const texto = `Hola, soy el bot Kirito.
     
 ✅ *¡Comando Ejecutado con Éxito!*
     
-Tu comando fue: ${usedPrefix}menu
-El bot ya no está bloqueado.
+El bot ha respondido desde la función aislada.
     
-*Nota:* Esta es una función de prueba.`;
+*Tu bot está conectado y el handler funciona.*`;
     
     await conn.reply(m.chat, texto, m);
 }
-// ----------------------------------------------------------------
 
 export async function handler(chatUpdate) {
     const conn = this;
+    
     try {
         if (!chatUpdate || !chatUpdate.messages || chatUpdate.messages.length === 0) return;
         let m = chatUpdate.messages[chatUpdate.messages.length - 1];
@@ -55,9 +51,10 @@ export async function handler(chatUpdate) {
         m = minimalSmsg(conn, m); 
         if (!m || !m.chat || !m.sender) return; 
         
+        // --- INICIO DE IMPRESIÓN ---
         try {
             const groupMetadata = m.isGroup ? (conn.chats[m.chat] || {}).metadata || await conn.groupMetadata(m.chat).catch(_ => null) || {} : {};
-            const senderName = m.isGroup ? m.sender.split('@')[0] : 'N/A';
+            const senderName = m.isGroup ? m.sender.split('@')[0] : 'N/A'; 
             const chatName = m.isGroup ? (groupMetadata.subject || 'Grupo') : 'Privado';
 
             const now = new Date();
@@ -72,46 +69,32 @@ export async function handler(chatUpdate) {
                             chalk.hex('#FFFF00')(`${senderName}: `) +
                             (m.isCommand ? chalk.yellow(logText) : logText.substring(0, 60));
 
+            console.log(chalk.bold.green('✅ EVENTO RECIBIDO'));
             console.log(logLine);
+            
         } catch (printError) {
             console.error(chalk.red('Error al imprimir mensaje en consola:'), printError);
         }
+        // --- FIN DE IMPRESIÓN ---
         
-        // Carga de la base de datos (mínima y protegida)
-        if (global.db && global.db.data == null) {
-            await global.loadDatabase().catch(e => console.error('Error al cargar la DB:', e));
+        // Lógica de comando manual para la función de prueba (no requiere DB)
+        if (m.isCommand) {
+             const command = m.text.toLowerCase().split(/\s+/)[0].replace(global.prefix || '!', '');
+             if (command === 'menu') {
+                 const usedPrefix = m.text.charAt(0);
+                 const extra = { usedPrefix };
+                 return await menu(conn, m, extra);
+             }
         }
         
-        if (!m.isCommand) return; 
-        
-        // Lógica de comando manual para la función de prueba
-        const command = m.text.toLowerCase().split(/\s+/)[0].replace(global.prefix || '!', '');
-
-        if (command === 'menu') {
-            const usedPrefix = m.text.charAt(0);
-            const extra = { usedPrefix };
-            await menu(conn, m, extra);
-        }
 
 
     } catch (e) {
         console.error(chalk.bold.bgRed('❌ ERROR CRÍTICO EN HANDLER (CAPTURA GLOBAL) ❌'));
         console.error(e);
-        // Respuesta de emergencia por WhatsApp si hay un error
-        if (conn.user?.jid) {
-           await conn.sendMessage(m.chat, { text: `🚨 Error interno del bot detectado. Intenta de nuevo.` });
-        }
     }
 }
 
-global.dfail = (type, m, conn) => {
-    const messages = {
-        group: `Solo en grupos.`,
-    };
-    if (messages[type]) {
-        conn.reply(m.chat, messages[type], m);
-    }
-};
 
 let file = global.__filename(import.meta.url, true);
 watchFile(file, async () => {
