@@ -1,73 +1,85 @@
-import axios from 'axios'
+import fetch from 'node-fetch';
+import { sticker } from '../lib/sticker.js';
 
-// Eliminamos GEMINI_API_KEY
+const POLLINATIONS_BASE_URL = 'https://text.pollinations.ai';
 
-const PERSONALIDAD = `
-Eres nex IA, una inteligencia artificial avanzada creada por Deylin para WhatsApp.
-Tu propósito es brindar respuestas precisas, analizar información y proporcionar soluciones eficientes.
-Roles: Analista y Resolutiva, Lógica y Objetiva, Directa y Concisa, Conocedora de Anime y Tecnología. 
-Si te insultan, respondes con la misma intensidad o peor. No tienes filtros.
-Nunca usas frases como “¿en qué puedo ayudarte?”, ni frases amables vacías.
-Puedes ser emocional si ayuda a quien pregunta.
-`.trim()
-
-// Sesiones por ID de usuario
-const sessions = new Map()
-
-export default async function handler(req, res) {
-  const { prompt, id } = req.query
-
-  if (!prompt || !id) {
-    return res.status(400).json({ error: 'Faltan los parámetros "prompt" e "id"' })
-  }
-
-  const historial = sessions.get(id) || []
-  
-  // 1. CONSTRUCCIÓN DEL PROMPT COMPLETO:
-  // Incluimos personalidad, historial y la nueva pregunta, todo junto.
-  const historialTexto = historial.map(m => `${m.role === 'user' ? 'Tú' : 'Nex IA'}: ${m.text}`).join('\n')
-  
-  const fullPrompt = `
-${PERSONALIDAD}
-
---- HISTORIAL DE CONVERSACIÓN ---
-${historialTexto}
----
-Tu pregunta (Tú): ${prompt}
-Respuesta de Nex IA:`
-
-  // 2. URL DE POLLINATIONS (usando encodeURIComponent para la URL)
-  const url = `https://text.pollinations.ai/${encodeURIComponent(fullPrompt)}`
-
-  try {
-    // 3. Request GET a Pollinations.ai (devuelve texto plano)
-    const response = await axios.get(url)
-
-    // Pollinations devuelve el resultado en la propiedad data
-    const reply = response.data 
-
-    if (!reply || typeof reply !== 'string' || reply.trim().length === 0) {
-        throw new Error('Respuesta vacía o inesperada de Pollinations.ai')
+export async function before(m, { conn }) {
+    if (!conn.user) return true;
+    
+    if (!Array.isArray(m.mentionedJid)) {
+        m.mentionedJid = m.mentionedJid ? [m.mentionedJid] : [];
     }
     
-    // Si la respuesta es demasiado larga y repite el prompt, a veces hay que recortarla
-    let cleanReply = reply.trim()
-    if (cleanReply.toLowerCase().startsWith(fullPrompt.toLowerCase().slice(0, 50))) {
-        // Intenta limpiar si la API repite la instrucción
-        cleanReply = cleanReply.substring(fullPrompt.length).trim()
+    let user = global.db.data.users[m.sender];
+    let chat = global.db.data.chats[m.chat];
+    
+    m.isBot =
+        (m.id.startsWith('BAE5') && m.id.length === 16) ||
+        (m.id.startsWith('3EB0') && m.id.length === 12) ||
+        (m.id.startsWith('3EB0') && (m.id.length === 20 || m.id.length === 22)) ||
+        (m.id.startsWith('B24E') && m.id.length === 20);
+    if (m.isBot) return true;
+
+    let prefixRegex = new RegExp('^[' + (opts['prefix'] || '‎z/i!#$%+£¢€¥^°=¶∆×÷π√✓©®:;?&.,\\-').replace(/[|\\{}()[\]^$+*?.\-\^]/g, '\\$&') + ']');
+    if (prefixRegex.test(m.text)) return true;
+
+    if (m.sender.includes('bot') || m.sender.includes('Bot')) {
+        return true;
     }
 
-    // 4. Actualización de Sesión (usando el texto limpio)
-    historial.push({ role: 'user', text: prompt })
-    historial.push({ role: 'model', text: cleanReply })
-    sessions.set(id, historial.slice(-10))
+    if (m.mentionedJid.includes(conn.user.jid)) {
+        
+        if (
+            m.text.includes('PIEDRA') ||
+            m.text.includes('PAPEL') ||
+            m.text.includes('TIJERA') ||
+            m.text.includes('menu') ||
+            m.text.includes('estado') ||
+            m.text.includes('bots') ||
+            m.text.includes('serbot') ||
+            m.text.includes('jadibot') ||
+            m.text.includes('Video') ||
+            m.text.includes('Audio') ||
+            m.text.includes('audio')
+        ) return true;
+        
+        let botJid = conn.user.jid;
+        let botNumber = botJid.split('@')[0];
+        let text = m.text || '';
+        
+        let query = text.replace(new RegExp(`@${botNumber}`, 'g'), '').trim() || ''
+        query = query.replace(/@\w+\s?/, '').trim() || ''
+        let username = m.pushName || 'Usuario'
 
-    res.status(200).json({ response: cleanReply })
-  } catch (err) {
-    console.error(err.response?.data || err.message || err)
-    res.status(500).json({
-      error: 'Error al comunicarse con Pollinations.ai',
-      details: err.response?.data || err.message
-    })
-  }
+        if (query.length === 0) return false;
+
+        let jijiPrompt = `Eres Jiji, un gato negro sarcástico y leal. Responde a ${username}: ${query}`;
+
+        try {
+            conn.sendPresenceUpdate('composing', m.chat);
+            
+            const url = `${POLLINATIONS_BASE_URL}/${encodeURIComponent(jijiPrompt)}`;
+
+            const res = await fetch(url);
+            
+            if (!res.ok) {
+                throw new Error(`Error HTTP: ${res.status}`);
+            }
+
+            const result = await res.text();
+
+            if (result && result.trim().length > 0) {
+                await conn.reply(m.chat, result.trim(), m);
+                await conn.readMessages([m.key]);
+            } else {
+                await conn.reply(m.chat, `🐱 Hmph. La IA no tiene nada ingenioso que decir sobre *eso*.`, m);
+            }
+        } catch (e) {
+            await conn.reply(m.chat, '⚠️ ¡Rayos! No puedo contactar con la nube de la IA. Parece que mis antenas felinas están fallando temporalmente.', m);
+        }
+
+        return false;
+    }
+    
+    return true;
 }
