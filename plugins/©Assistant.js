@@ -9,32 +9,54 @@ export async function before(m, { conn }) {
     let user = global.db.data.users[m.sender];
     let chat = global.db.data.chats[m.chat];
 
-    // Asegura que es un array (CORRECCIÓN DE ERROR 1)
     let mentionedJidSafe = Array.isArray(m.mentionedJid) ? m.mentionedJid : [];
 
     let botJid = conn.user.jid;
     let botNumber = botJid.split('@')[0];
     let text = m.text || '';
 
-    // CONDICIÓN CLAVE DE ACTIVACIÓN HÍBRIDA (LA ÚNICA QUE FUNCIONÓ EN TU ENTORNO)
-    // 1. Detección oficial (mentionedJidSafe)
-    // 2. Detección genérica (si el texto empieza con @, asume que es una mención al bot)
-    let isBotExplicitlyMentioned = mentionedJidSafe.includes(botJid) || text.trim().startsWith('@');
+    // CONDICIÓN DE ACTIVACIÓN: Se activa si hay alguna mención, o si la JID del bot es detectada.
+    let isMentionedAtAll = text.trim().startsWith('@') || mentionedJidSafe.length > 0;
     
-    if (!isBotExplicitlyMentioned) {
+    // VERIFICACIÓN CLAVE: El bot NO debe responder si se menciona a alguien MÁS y no es el bot.
+    if (isMentionedAtAll) {
+        
+        // El bot fue mencionado (detección oficial)
+        let isBotMentioned = mentionedJidSafe.includes(botJid);
+
+        // Si se mencionó a ALGUIEN, pero la lista de menciones NO incluye al bot,
+        // Y la mención NO es solo el JID del bot (para evitar falsos positivos).
+        if (!isBotMentioned && !text.includes(`@${botNumber}`)) {
+            
+            // Verificamos si la primera mención en el texto es un JID diferente.
+            const firstMentionMatch = text.match(/@(\d+)/);
+            if (firstMentionMatch) {
+                const mentionedJidNumber = firstMentionMatch[1];
+                // Si el número mencionado no es el del bot, SALIMOS.
+                if (mentionedJidNumber !== botNumber) {
+                    return true; 
+                }
+            }
+        }
+        
+        // Si la activación pasa los filtros anteriores (es decir, asume que es el bot), continuamos.
+
+    } else {
+        // Si no hay mención en absoluto, salimos.
         return true;
     }
+
 
     // --- El bot ha sido mencionado. Procedemos a limpiar la consulta. ---
 
     let query = text;
 
-    // 1. Limpiamos todas las JIDs mencionadas en la lista (esto elimina @otros y @bot si aparecen)
+    // 1. Limpiamos las JIDs mencionadas en la lista.
     for (let jid of mentionedJidSafe) {
         query = query.replace(new RegExp(`@${jid.split('@')[0]}`, 'g'), '').trim();
     }
     
-    // 2. Limpiamos cualquier rastro de @ al inicio que pueda haber quedado (maneja el @cualquiera que activó)
+    // 2. Limpiamos cualquier rastro de @ al inicio (maneja el caso de JID oculta o no detectada)
     if (query.startsWith('@')) {
         query = query.replace(/^@\S+\s?/, '').trim();
     }
