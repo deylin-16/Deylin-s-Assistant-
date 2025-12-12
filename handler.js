@@ -311,7 +311,7 @@ export async function handler(chatUpdate) {
 
 global.dfail = (type, m, conn) => {
     const messages = {
-        rowner: `Solo con Deylin-Eliac hablo de eso w.`,
+        rowner: `lo siento no te puedo ayudar con eso Bro.`,
         owner: `Solo con Deylin-Eliac hablo de eso w.`,
         group: `Si quieres hablar de eso solo en grupos bro.`,
         private: `De ésto solo habló en privado güey.`,
