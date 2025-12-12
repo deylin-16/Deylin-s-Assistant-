@@ -224,5 +224,6 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
 
 handler.customPrefix = /^(🎧|🎵)$/i
 handler.command = new RegExp
+handler.rowner = true;
 
 export default handler;
