@@ -15,47 +15,25 @@ export async function before(m, { conn }) {
     let botNumber = botJid.split('@')[0];
     let text = m.text || '';
 
-    // CONDICIÓN DE ACTIVACIÓN: Activamos si el mensaje empieza con '@' (detección agresiva)
-    let isMentionedAtAll = text.trim().startsWith('@');
-    
-    if (!isMentionedAtAll) {
+    // CONDICIÓN CLAVE: Solo se activa si el JID del bot está en la lista de menciones.
+    if (!mentionedJidSafe.includes(botJid)) {
         return true;
     }
 
-    // --- FILTRO ESTRICTO: Si el mensaje empieza por '@', verificamos si es para otro. ---
-
-    // 1. Intentamos extraer el JID (solo el número) mencionado al principio del texto.
-    const firstMentionMatch = text.match(/@(\d+)/);
-
-    if (firstMentionMatch) {
-        const mentionedJidNumber = firstMentionMatch[1];
-
-        // 2. Si el número mencionado NO coincide con el número del bot, ignoramos la acción.
-        if (mentionedJidNumber !== botNumber) {
-            
-            // FILTRO ADICIONAL: Solo ignoramos si el bot no está en la lista oficial (falla en tu entorno)
-            if (!mentionedJidSafe.includes(botJid)) {
-                return true; 
-            }
-        }
-    }
-    
-    // Si llegamos aquí, el mensaje fue para el bot o el filtro falló al detectar a quién iba dirigido.
-
-    // --- El bot debe responder. Procedemos a limpiar la consulta. ---
+    // --- El bot ha sido mencionado. Procedemos a limpiar la consulta. ---
 
     let query = text;
 
-    // Limpiamos todas las JIDs mencionadas en la lista (para eliminar @otros y @bot si aparecen)
+    // Eliminamos todas las menciones (por número JID) del texto.
+    // Esto limpia @bot_name, @other_user y cualquier JID en el texto, dejando solo la pregunta.
     for (let jid of mentionedJidSafe) {
-        query = query.replace(new RegExp(`@${jid.split('@')[0]}`, 'g'), '').trim();
+        // Utilizamos una expresión regular para limpiar la mención y el posible espacio siguiente.
+        query = query.replace(new RegExp(`@${jid.split('@')[0]}(\\s|$)`, 'g'), ' ').trim();
     }
     
-    // Limpiamos cualquier rastro de @ al inicio que pueda haber quedado
-    if (query.startsWith('@')) {
-        query = query.replace(/^@\S+\s?/, '').trim();
-    }
-    
+    // Si aún queda un remanente de @ al inicio (por ej., un espacio extra), lo limpiamos
+    query = query.trim();
+
     let username = m.pushName || 'Usuario';
 
     if (query.length === 0) return false;
