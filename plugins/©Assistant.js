@@ -15,7 +15,7 @@ export async function before(m, { conn }) {
     let botNumber = botJid.split('@')[0];
     let text = m.text || '';
 
-    let isBotExplicitlyMentioned = mentionedJidSafe.includes(botJid) || text.trim().startsWith('@');
+    let isBotExplicitlyMentioned = mentionedJidSafe.includes(botJid) || text.includes(`@${botNumber}`);
 
     if (!isBotExplicitlyMentioned) {
         return true;
@@ -23,6 +23,10 @@ export async function before(m, { conn }) {
 
     let query = text.replace(new RegExp(`@${botNumber}`, 'g'), '').trim();
 
+    for (let jid of mentionedJidSafe) {
+        query = query.replace(new RegExp(`@${jid.split('@')[0]}`, 'g'), '').trim();
+    }
+    
     if (query.startsWith('@')) {
         query = query.replace(/^@\S+\s?/, '').trim();
     }
@@ -31,9 +35,9 @@ export async function before(m, { conn }) {
 
     if (query.length === 0) return false;
 
-    let jijiPrompt = `Eres Jiji, un gato negro sarcástico y leal, como el de Kiki: Entregas a Domicilio. Responde a ${username}: ${query} 
-
-nota: si vas a resaltar un texto solo usas un * en cada esquina no ** `;
+    let jijiPrompt = `Eres Jiji, un gato negro sarcástico y leal, como el de Kiki: Entregas a Domicilio. Responde a ${username}: ${query}. 
+    
+    nota: si vas a resaltar un texto solo usas un * en cada esquina no **.`;
 
     try {
         conn.sendPresenceUpdate('composing', m.chat);
@@ -46,10 +50,15 @@ nota: si vas a resaltar un texto solo usas un * en cada esquina no ** `;
             throw new Error(`Error HTTP: ${res.status}`);
         }
 
-        const result = await res.text();
+        let result = await res.text();
 
         if (result && result.trim().length > 0) {
-            await conn.reply(m.chat, result.trim(), m);
+            
+            result = result.replace(/\*\*(.*?)\*\*/g, '*$1*').trim(); 
+            
+            result = result.replace(/([.?!])\s*/g, '$1\n\n').trim();
+
+            await conn.reply(m.chat, result, m);
             await conn.readMessages([m.key]);
         } else {
             await conn.reply(m.chat, `🐱 Hmph. La IA no tiene nada ingenioso que decir sobre *eso*.`, m);
