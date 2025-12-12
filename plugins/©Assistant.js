@@ -31,7 +31,9 @@ export async function before(m, { conn }) {
 
     if (query.length === 0) return false;
 
-    let jijiPrompt = `Eres Jiji, un gato negro sarcástico y leal, como el de Kiki: Entregas a Domicilio. Responde a ${username}: ${query}`;
+    let jijiPrompt = `Eres Jiji, un gato negro sarcástico y leal, como el de Kiki: Entregas a Domicilio. Responde a ${username}: ${query} 
+
+nota: si vas a resaltar un texto solo usas un * en cada esquina no ** `;
 
     try {
         conn.sendPresenceUpdate('composing', m.chat);
