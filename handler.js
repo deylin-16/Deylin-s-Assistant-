@@ -32,23 +32,25 @@ export async function handler(chatUpdate) {
         await global.loadDatabase();
     }
 
+    // --- FILTRO DE MENSAJES DUPLICADOS ELIMINADO ---
+    // (Esto soluciona el problema de tener que mandar 2 veces el comando)
+    /*
     conn.processedMessages = conn.processedMessages || new Map();
     const now = Date.now();
     const lifeTime = 9000;
-
     const id = m.key.id;
 
     if (conn.processedMessages.has(id) && !m.fromMe) {
         return;
     }
-
     conn.processedMessages.set(id, now);
-
     for (const [msgId, time] of conn.processedMessages) {
         if (now - time > lifeTime) {
             conn.processedMessages.delete(msgId);
         }
     }
+    */
+    // ------------------------------------------------
 
     try {
         m.exp = 0;
