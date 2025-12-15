@@ -18,6 +18,12 @@ export async function handler(chatUpdate) {
     this.uptime = this.uptime || Date.now();
     const conn = this;
 
+    // --- Carga de DB al inicio para evitar bloqueos posteriores ---
+    if (global.db.data == null) {
+        await global.loadDatabase();
+    }
+    // -------------------------------------------------------------
+
     if (!chatUpdate || !chatUpdate.messages || chatUpdate.messages.length === 0) {
         return;
     }
@@ -28,12 +34,7 @@ export async function handler(chatUpdate) {
     m = smsg(conn, m) || m;
     if (!m) return;
 
-    if (global.db.data == null) {
-        await global.loadDatabase();
-    }
-
-    // --- FILTRO DE MENSAJES DUPLICADOS ELIMINADO ---
-    // (Esto soluciona el problema de tener que mandar 2 veces el comando)
+    // --- FILTRO DE MENSAJES DUPLICADOS ELIMINADO (se mantiene eliminado para no causar bloqueo) ---
     /*
     conn.processedMessages = conn.processedMessages || new Map();
     const now = Date.now();
