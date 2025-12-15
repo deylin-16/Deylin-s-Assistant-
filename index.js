@@ -36,6 +36,7 @@ import readline, { createInterface } from 'readline'
 import NodeCache from 'node-cache'
 const {CONNECTING} = ws
 const {chain} = lodash
+global.sessions = 'sessions' 
 const PORT = process.env.PORT || process.env.SERVER_PORT || 3000
 
 //const yuw = dirname(fileURLToPath(import.meta.url))
