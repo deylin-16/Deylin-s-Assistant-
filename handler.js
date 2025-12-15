@@ -39,7 +39,11 @@ export async function handler(chatUpdate) {
 
     const id = m.key.id;
 
-    if (conn.processedMessages.has(id)) {
+    // SOLUCIÓN AL PROBLEMA DE EJECUCIÓN DOBLE/BLOQUEADA EN PRIVADO
+    // Se añade `&& !m.fromMe` para no bloquear los mensajes salientes del bot.
+    // En chats privados, el ID del mensaje del usuario y la respuesta del bot pueden coincidir,
+    // y si no se excluye `m.fromMe`, el filtro bloquea la respuesta del bot.
+    if (conn.processedMessages.has(id) && !m.fromMe) {
         return;
     }
 
