@@ -5,7 +5,6 @@ import path, { join } from 'path';
 import { unwatchFile, watchFile } from 'fs';
 import chalk from 'chalk';
 import ws from 'ws';
-import fetch from 'node-fetch';
 
 const isNumber = x => typeof x === 'number' && !isNaN(x);
 
@@ -39,10 +38,6 @@ export async function handler(chatUpdate) {
 
     const id = m.key.id;
 
-    // SOLUCIÓN AL PROBLEMA DE EJECUCIÓN DOBLE/BLOQUEADA EN PRIVADO
-    // Se añade `&& !m.fromMe` para no bloquear los mensajes salientes del bot.
-    // En chats privados, el ID del mensaje del usuario y la respuesta del bot pueden coincidir,
-    // y si no se excluye `m.fromMe`, el filtro bloquea la respuesta del bot.
     if (conn.processedMessages.has(id) && !m.fromMe) {
         return;
     }
@@ -62,40 +57,7 @@ export async function handler(chatUpdate) {
         const senderJid = m.sender;
         const chatJid = m.chat;
 
-        global.db.data.chats[chatJid] ||= {
-            isBanned: false,
-            sAutoresponder: '',
-            welcome: true,
-            autolevelup: false,
-            autoresponder: true,
-            delete: false,
-            autoAceptar: false,
-            autoRechazar: false,
-            detect: true,
-            antiBot: false,
-            modoadmin: false,
-            antiLink: true,
-            nsfw: false,
-            expired: 0,
-            autoresponder2: false,
-            per: [],
-            welcomeMsg: '¡Bienvenido/a al grupo!'
-        };
-
-        const settingsJid = conn.user.jid;
-        global.db.data.settings[settingsJid] ||= {
-            self: false,
-            restrict: true,
-            jadibotmd: true,
-            antiPrivate: false,
-            autoread: false,
-            soloParaJid: false,
-            status: 0
-        };
-
         const user = global.db.data.users[senderJid] || {};
-        const chat = global.db.data.chats[chatJid];
-        const settings = global.db.data.settings[settingsJid];
 
         if (typeof global.db.data.users[senderJid] !== 'object') global.db.data.users[senderJid] = {};
         if (user) {
@@ -115,39 +77,10 @@ export async function handler(chatUpdate) {
         if (opts['swonly'] && m.chat !== 'status@broadcast') return;
         if (typeof m.text !== 'string') m.text = '';
 
-        let senderLid, botLid, botJid, groupMetadata, participants, user2, bot, isRAdmin, isAdmin, isBotAdmin;
-
-        if (m.isGroup) {
-            groupMetadata = (conn.chats[m.chat] || {}).metadata || await conn.groupMetadata(m.chat).catch(_ => null) || {};
-            participants = groupMetadata.participants || [];
-            botJid = conn.user.jid;
-
-            [senderLid, botLid] = await Promise.all([
-                getLidFromJid(m.sender, conn),
-                getLidFromJid(botJid, conn)
-            ]);
-
-            user2 = participants.find(p => p.id === senderLid || p.jid === senderJid) || {};
-            bot = participants.find(p => p.id === botLid || p.id === botJid) || {};
-
-            isRAdmin = user2?.admin === "superadmin";
-            isAdmin = isRAdmin || user2?.admin === "admin";
-            isBotAdmin = !!bot?.admin;
-        } else {
-            senderLid = m.sender;
-            botLid = conn.user.jid;
-            botJid = conn.user.jid;
-            groupMetadata = {};
-            participants = [];
-            user2 = {};
-            bot = {};
-            isRAdmin = false;
-            isAdmin = false;
-            isBotAdmin = false;
-        }
+        let senderLid = m.sender; 
 
         const ___dirname = path.join(path.dirname(fileURLToPath(import.meta.url)), './plugins');
-        let usedPrefix = ''; // Siempre vacío al no usar prefijo
+        let usedPrefix = ''; 
 
         for (const name in global.plugins) {
             const plugin = global.plugins[name];
@@ -180,7 +113,7 @@ export async function handler(chatUpdate) {
 
             if (typeof plugin.before === 'function') {
                 const extraBefore = {
-                    conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
+                    conn, user: global.db.data.users[m.sender], isROwner, isOwner, chatUpdate, __dirname: ___dirname, __filename
                 };
                 if (await plugin.before.call(conn, m, extraBefore)) {
                     continue;
@@ -189,7 +122,6 @@ export async function handler(chatUpdate) {
 
             if (typeof plugin !== 'function') continue;
 
-            // --- Lógica de Detección de Comando SIN PREFIJO ---
             let noPrefix = m.text.trim();
             if (noPrefix.length === 0) continue; 
 
@@ -206,49 +138,27 @@ export async function handler(chatUpdate) {
 
             if (!isAccept) continue;
 
-            // Si el comando coincide, ajustamos noPrefix y text
             noPrefix = m.text.trim().substring(command.length).trim();
             let text = args.join(' ');
 
-            // Aseguramos que 'args' contenga todo lo que va después del comando
             if (noPrefix.length > 0) {
                args = noPrefix.split(/\s+/).filter(v => v);
             } else {
                args = [];
             }
-            // --- FIN Lógica de Detección de Comando SIN PREFIJO ---
 
             m.plugin = name;
 
             const fail = plugin.fail || global.dfail;
             global.comando = command;
 
-            if (settings.soloParaJid && m.sender !== settings.soloParaJid) {
-                continue;
+            if (plugin.rowner && !isROwner) {
+                fail('rowner', m, conn);
+                return;
             }
-
-            if (chat?.isBanned && !isROwner) return;
-            if (chat?.modoadmin && !isOwner && !isROwner && m.isGroup && !isAdmin) return;
-
-            const checkPermissions = (perm) => {
-                const permissions = {
-                    rowner: isROwner,
-                    owner: isOwner,
-                    group: m.isGroup,
-                    botAdmin: isBotAdmin,
-                    admin: isAdmin,
-                    private: !m.isGroup,
-                    restrict: !opts['restrict']
-                };
-                return permissions[perm];
-            };
-
-            const requiredPerms = ['rowner', 'owner', 'mods', 'premium', 'group', 'botAdmin', 'admin', 'private', 'restrict'];
-            for (const perm of requiredPerms) {
-                if (plugin[perm] && !checkPermissions(perm)) {
-                    fail(perm, m, conn);
-                    return;
-                }
+            if (plugin.owner && !isOwner) {
+                fail('owner', m, conn);
+                return;
             }
 
             m.isCommand = true;
@@ -256,7 +166,7 @@ export async function handler(chatUpdate) {
             m.exp += xp;
 
             const extra = {
-                usedPrefix, noPrefix, args, command, text, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
+                usedPrefix, noPrefix, args, command, text, conn, user: global.db.data.users[m.sender], isROwner, isOwner, chatUpdate, __dirname: ___dirname, __filename
             };
 
             try {
@@ -287,7 +197,7 @@ export async function handler(chatUpdate) {
                     await conn.sendMessage(m.chat, { delete: m.key });
                 }
                 finalUser.exp = (finalUser.exp || 0) + (m.exp || 0);
-                finalUser.coin = (finalUser.coin || 0) - (m.coin ? m.coin * 1 : 0);
+                finalUser.coin = (finalUser.coin || 0) - (m.coin ? finalUser.coin * 1 : 0);
             }
 
             if (m.plugin) {
@@ -310,10 +220,6 @@ global.dfail = (type, m, conn) => {
     const messages = {
         rowner: ``,
         owner: `Solo con Deylin-Eliac hablo de eso w.`,
-        group: `Si quieres hablar de eso solo en grupos bro.`,
-        private: `De ésto solo habló en privado güey.`,
-        admin: `Solo los administradores me pueden decir que hacer.`,
-        botAdmin: `Dame admin bro para seguir.`,
     };
     if (messages[type]) {
         conn.reply(m.chat, messages[type], m);
