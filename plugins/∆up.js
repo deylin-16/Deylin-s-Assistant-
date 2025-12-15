@@ -37,7 +37,7 @@ let handler = async (m, { conn, args }) => {
     } 
 };
 
-handler.command = ['update', 'actualizar', 'up']
+handler.command = ['π']
 
 handler.rowner = true;
 
