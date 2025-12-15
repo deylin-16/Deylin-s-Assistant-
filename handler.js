@@ -52,8 +52,6 @@ export async function handler(chatUpdate) {
     }
 
     try {
-
-
         m.exp = 0;
         m.coin = false;
 
@@ -77,6 +75,7 @@ export async function handler(chatUpdate) {
             expired: 0,
             autoresponder2: false,
             per: [],
+            welcomeMsg: '¡Bienvenido/a al grupo!'
         };
 
         const settingsJid = conn.user.jid;
@@ -93,7 +92,6 @@ export async function handler(chatUpdate) {
         const user = global.db.data.users[senderJid] || {};
         const chat = global.db.data.chats[chatJid];
         const settings = global.db.data.settings[settingsJid];
-
 
         if (typeof global.db.data.users[senderJid] !== 'object') global.db.data.users[senderJid] = {};
         if (user) {
@@ -145,7 +143,7 @@ export async function handler(chatUpdate) {
         }
 
         const ___dirname = path.join(path.dirname(fileURLToPath(import.meta.url)), './plugins');
-        let usedPrefix = '';
+        let usedPrefix = ''; // Siempre vacío al no usar prefijo
 
         for (const name in global.plugins) {
             const plugin = global.plugins[name];
@@ -158,7 +156,7 @@ export async function handler(chatUpdate) {
                     if (plugin.all.toString().includes('conn.user') && !conn.user) {
                         return 
                     }
-                    
+
                     await plugin.all.call(conn, m, {
                         chatUpdate,
                         __dirname: ___dirname,
@@ -176,40 +174,24 @@ export async function handler(chatUpdate) {
                 continue;
             }
 
-            const str2Regex = str => str.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&');
-            let _prefix = plugin.customPrefix ? plugin.customPrefix : conn.prefix ? conn.prefix : global.prefix;
-
-            const match = (
-                _prefix instanceof RegExp ?
-                    [[_prefix.exec(m.text), _prefix]] :
-                    Array.isArray(_prefix) ?
-                        _prefix.map(p => {
-                            const re = p instanceof RegExp ? p : new RegExp(str2Regex(p));
-                            return [re.exec(m.text), re];
-                        }) :
-                        typeof _prefix === 'string' ?
-                            [[new RegExp(str2Regex(_prefix)).exec(m.text), new RegExp(str2Regex(_prefix))]] :
-                            [[[], new RegExp()]]
-            ).find(p => p[0]);
-
             if (typeof plugin.before === 'function') {
                 const extraBefore = {
-                    match, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
+                    conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
                 };
                 if (await plugin.before.call(conn, m, extraBefore)) {
                     continue;
                 }
             }
 
-            if (typeof plugin !== 'function' || !match) continue;
+            if (typeof plugin !== 'function') continue;
 
-            usedPrefix = match[0][0];
-            let noPrefix = m.text.replace(usedPrefix, '');
-            let [command, ...args] = noPrefix.trim().split(/\s+/).filter(v => v);
-            let text = args.join(' ');
+            // --- Lógica de Detección de Comando SIN PREFIJO ---
+            let noPrefix = m.text.trim();
+            if (noPrefix.length === 0) continue; 
+
+            let [command, ...args] = noPrefix.split(/\s+/).filter(v => v);
             command = (command || '').toLowerCase();
 
-            const fail = plugin.fail || global.dfail;
             const isAccept = plugin.command instanceof RegExp ?
                 plugin.command.test(command) :
                 Array.isArray(plugin.command) ?
@@ -218,17 +200,28 @@ export async function handler(chatUpdate) {
                         plugin.command === command :
                         false;
 
+            if (!isAccept) continue;
+
+            // Si el comando coincide, ajustamos noPrefix y text
+            noPrefix = m.text.trim().substring(command.length).trim();
+            let text = args.join(' ');
+
+            // Aseguramos que 'args' contenga todo lo que va después del comando
+            if (noPrefix.length > 0) {
+               args = noPrefix.split(/\s+/).filter(v => v);
+            } else {
+               args = [];
+            }
+            // --- FIN Lógica de Detección de Comando SIN PREFIJO ---
+
+            m.plugin = name;
+
+            const fail = plugin.fail || global.dfail;
             global.comando = command;
 
             if (settings.soloParaJid && m.sender !== settings.soloParaJid) {
                 continue;
             }
-
-
-
-            if (!isAccept) continue;
-
-            m.plugin = name;
 
             if (chat?.isBanned && !isROwner) return;
             if (chat?.modoadmin && !isOwner && !isROwner && m.isGroup && !isAdmin) return;
@@ -259,7 +252,7 @@ export async function handler(chatUpdate) {
             m.exp += xp;
 
             const extra = {
-                match, usedPrefix, noPrefix, args, command, text, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
+                usedPrefix, noPrefix, args, command, text, conn, participants, groupMetadata, user: global.db.data.users[m.sender], isROwner, isOwner, isRAdmin, isAdmin, isBotAdmin, chatUpdate, __dirname: ___dirname, __filename
             };
 
             try {
@@ -311,7 +304,7 @@ export async function handler(chatUpdate) {
 
 global.dfail = (type, m, conn) => {
     const messages = {
-        rowner: `lo siento no te puedo ayudar con eso Bro.`,
+        rowner: ``,
         owner: `Solo con Deylin-Eliac hablo de eso w.`,
         group: `Si quieres hablar de eso solo en grupos bro.`,
         private: `De ésto solo habló en privado güey.`,
