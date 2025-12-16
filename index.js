@@ -1,13 +1,13 @@
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 import './config.js';
-import { watchFile, unwatchFile } from 'fs';
 import cfonts from 'cfonts';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { platform } from 'process';
 import * as ws from 'ws';
-import { readdirSync, statSync, unlinkSync, existsSync, rmSync, watch, join } from 'path';
+import { readdirSync, unlinkSync, existsSync, watch } from 'fs';
+import { join, dirname } from 'path';
 import yargs from 'yargs';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
