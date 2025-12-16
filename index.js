@@ -4,7 +4,8 @@ import './config.js';
 import cfonts from 'cfonts';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
-import { platform, tmpdir } from 'process';
+import { platform } from 'process';
+import { tmpdir } from 'os';
 import { readdirSync, unlinkSync, existsSync, watch, statSync } from 'fs';
 import { join, dirname } from 'path';
 import yargs from 'yargs';
@@ -99,7 +100,6 @@ global.reloadHandler = async function (restartConn = false) {
         global.conn.ev.on('creds.update', saveCreds);
     }
 
-    // Remover listeners solo si existen
     if (global.conn.handler) {
         global.conn.ev.off('messages.upsert', global.conn.handler);
     }
