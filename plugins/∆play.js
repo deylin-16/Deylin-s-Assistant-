@@ -194,6 +194,6 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
   }
 };
 
-handler.command = /^(|🎧|🎵)/i;
+handler.command = /^(🎧|🎵)/i;
 
 export default handler;
