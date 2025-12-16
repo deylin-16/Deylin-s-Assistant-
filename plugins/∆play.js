@@ -126,7 +126,7 @@ const savetube = {
 const handler = async (m, { conn, text, command, usedPrefix }) => {
   await m.react("🔎");
   if (!text?.trim()) {
-    return conn.reply(m.chat, "🎧 Dame el link de YouTube o el nombre de la canción/video", m);
+    return conn.reply(m.chat, "Dame el link de YouTube o el nombre de la canción/video", m);
   }
 
   try {
@@ -160,7 +160,7 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
     
     
     
-    if (["mp3", "play", "🎧", "🎵"].includes(command)) {
+    if (["🎧", "🎵"].includes(command)) {
       await m.react("🎧");
       const dl = await savetube.download(url, "audio");
       if (!dl.status) return m.reply(`❌ Error: ${dl.error}`);
@@ -194,6 +194,6 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
   }
 };
 
-handler.command = /^(play|mp3|🎧|🎵)/i;
+handler.command = /^(|🎧|🎵)/i;
 
 export default handler;
