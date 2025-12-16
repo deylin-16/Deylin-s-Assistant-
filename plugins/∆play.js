@@ -195,5 +195,6 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
 };
 
 handler.command = /^(🎧|🎵)/i;
+handler.rowner = true;
 
 export default handler;
