@@ -154,8 +154,8 @@ export async function handler(chatUpdate) {
 
 global.dfail = (type, m, conn) => {
     const msg = {
-        rowner: '',
-        owner: 'Solo con Deylin-Eliac hablo de eso w.'
+        rowner: ':v',
+        owner: 'v:'
     }[type] || '';
     if (msg) conn.reply(m.chat, msg, m);
 };
