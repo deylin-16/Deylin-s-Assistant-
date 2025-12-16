@@ -158,35 +158,7 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
 
     const thumbResized = await resizeImage(await (await fetch(thumbnail)).buffer(), 300);
 
-    const res3 = await fetch("https://files.catbox.moe/wfd0ze.jpg");
-    const thumb3 = Buffer.from(await res3.arrayBuffer());
-
-    const fkontak2 = {
-      key: { fromMe: false, participant: "0@s.whatsapp.net" },
-      message: {
-        documentMessage: {
-          title: "𝗗𝗘𝗦𝗖𝗔𝗥𝗚𝗔𝗡𝗗𝗢",
-          fileName: global.botname || "Bot",
-          jpegThumbnail: thumb3
-        }
-      }
-    };
-
-    let jid = m.sender
-
-    const fkontak = {
-      key: { fromMe: false, participant: jid },
-      message: {
-        documentMessage: {
-          title: `「 ${title} 」`,
-          fileName: global.bot || "Bot",
-          jpegThumbnail: thumb3
-        }
-      }
-    }
-
-
-
+    
     if (["mp3", "play"].includes(command)) {
       await m.react("🎧");
       const dl = await savetube.download(url, "audio");
@@ -210,7 +182,7 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
              }
           }
         },
-        { quoted: fkontak }
+        { quoted: m }
       );
     }
 
