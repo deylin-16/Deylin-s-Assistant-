@@ -1,5 +1,4 @@
 import { smsg } from './lib/simple.js';
-import { format } from 'util';
 import { fileURLToPath } from 'url';
 import path, { join } from 'path';
 import { unwatchFile, watchFile } from 'fs';
@@ -8,25 +7,13 @@ import ws from 'ws';
 
 const isNumber = x => typeof x === 'number' && !isNaN(x);
 
-async function getLidFromJid(id, connection) {
-    if (id.endsWith('@lid')) return id;
-    const res = await connection.onWhatsApp(id).catch(() => []);
-    return res[0]?.lid || id;
-}
-
 export async function handler(chatUpdate) {
     this.uptime = this.uptime || Date.now();
     const conn = this;
 
-    // --- Carga de DB al inicio para evitar bloqueos posteriores ---
-    if (global.db.data == null) {
-        await global.loadDatabase();
-    }
-    // -------------------------------------------------------------
+    if (global.db.data == null) await global.loadDatabase();
 
-    if (!chatUpdate || !chatUpdate.messages || chatUpdate.messages.length === 0) {
-        return;
-    }
+    if (!chatUpdate?.messages?.length) return;
 
     let m = chatUpdate.messages[chatUpdate.messages.length - 1];
     if (!m) return;
@@ -34,209 +21,152 @@ export async function handler(chatUpdate) {
     m = smsg(conn, m) || m;
     if (!m) return;
 
-    // --- FILTRO DE MENSAJES DUPLICADOS ELIMINADO (se mantiene eliminado para no causar bloqueo) ---
-    /*
-    conn.processedMessages = conn.processedMessages || new Map();
-    const now = Date.now();
-    const lifeTime = 9000;
-    const id = m.key.id;
+    if (m.isBaileys) return;
+    if (opts['self'] && !m.fromMe && !global.owner.some(([n]) => m.sender.startsWith(n.replace(/[^0-9]/g, '')))) return;
+    if (opts['swonly'] && m.chat !== 'status@broadcast') return;
+    if (typeof m.text !== 'string') m.text = '';
 
-    if (conn.processedMessages.has(id) && !m.fromMe) {
-        return;
+    const senderJid = m.sender;
+    const chatJid = m.chat;
+
+    let user = global.db.data.users[senderJid];
+    if (!user) {
+        user = global.db.data.users[senderJid] = { exp: 0, coin: 0, muto: false };
+    } else {
+        if (!isNumber(user.exp)) user.exp = 0;
+        if (!isNumber(user.coin)) user.coin = 0;
+        if (!('muto' in user)) user.muto = false;
     }
-    conn.processedMessages.set(id, now);
-    for (const [msgId, time] of conn.processedMessages) {
-        if (now - time > lifeTime) {
-            conn.processedMessages.delete(msgId);
-        }
-    }
-    */
-    // ------------------------------------------------
 
-    try {
-        m.exp = 0;
-        m.coin = false;
+    const isROwner = global.owner.some(([number]) => senderJid.startsWith(number.replace(/[^0-9]/g, '') + (senderJid.includes('@lid') ? '@lid' : '@s.whatsapp.net')));
+    const isOwner = isROwner || m.fromMe;
 
-        const senderJid = m.sender;
-        const chatJid = m.chat;
+    m.exp = 0;
+    m.coin = false;
+    m.isCommand = false;
 
-        const user = global.db.data.users[senderJid] || {};
+    const ___dirname = path.join(path.dirname(fileURLToPath(import.meta.url)), './plugins');
 
-        if (typeof global.db.data.users[senderJid] !== 'object') global.db.data.users[senderJid] = {};
-        if (user) {
-            if (!('exp' in user) || !isNumber(user.exp)) user.exp = 0;
-            if (!('coin' in user) || !isNumber(user.coin)) user.coin = 0;
-            if (!('muto' in user)) user.muto = false; 
-        } else {
-            global.db.data.users[senderJid] = { exp: 0, coin: 0, muto: false };
+    for (const name in global.plugins) {
+        const plugin = global.plugins[name];
+        if (!plugin || plugin.disabled) continue;
+
+        const __filename = join(___dirname, name);
+
+        if (typeof plugin.all === 'function') {
+            try {
+                await plugin.all.call(conn, m, { chatUpdate, __dirname: ___dirname, __filename });
+            } catch (e) {
+                console.error(`Error en plugin.all de ${name}:`, e);
+            }
         }
 
-        const detectwhat = m.sender.includes('@lid') ? '@lid' : '@s.whatsapp.net';
-        const isROwner = global.owner.map(([number]) => number.replace(/[^0-9]/g, '') + detectwhat).includes(senderJid);
-        const isOwner = isROwner || m.fromMe;
+        if (!opts['restrict'] && plugin.tags?.includes('admin')) continue;
 
-        if (m.isBaileys || opts['nyimak']) return;
-        if (!isROwner && opts['self']) return;
-        if (opts['swonly'] && m.chat !== 'status@broadcast') return;
-        if (typeof m.text !== 'string') m.text = '';
-
-        let senderLid = m.sender; 
-
-        const ___dirname = path.join(path.dirname(fileURLToPath(import.meta.url)), './plugins');
-        let usedPrefix = ''; 
-
-        for (const name in global.plugins) {
-            const plugin = global.plugins[name];
-            if (!plugin || plugin.disabled) continue;
-
-            const __filename = join(___dirname, name);
-
-            if (typeof plugin.all === 'function') {
-                try {
-                    if (plugin.all.toString().includes('conn.user') && !conn.user) {
-                        return 
-                    }
-
-                    await plugin.all.call(conn, m, {
-                        chatUpdate,
-                        __dirname: ___dirname,
-                        __filename
-                    });
-                } catch (e) {
-                    if (e instanceof TypeError && e.message.includes('user')) {
-                    } else {
-                        console.error(`Error en plugin.all de ${name}:`, e);
-                    }
-                }
-            }
-
-            if (!opts['restrict'] && plugin.tags && plugin.tags.includes('admin')) {
-                continue;
-            }
-
-            if (typeof plugin.before === 'function') {
-                const extraBefore = {
-                    conn, user: global.db.data.users[m.sender], isROwner, isOwner, chatUpdate, __dirname: ___dirname, __filename
-                };
-                if (await plugin.before.call(conn, m, extraBefore)) {
+        if (typeof plugin.before === 'function') {
+            try {
+                if (await plugin.before.call(conn, m, { conn, user, isROwner, isOwner, chatUpdate, __dirname: ___dirname, __filename })) {
                     continue;
                 }
-            }
-
-            if (typeof plugin !== 'function') continue;
-
-            let noPrefix = m.text.trim();
-            if (noPrefix.length === 0) continue; 
-
-            let [command, ...args] = noPrefix.split(/\s+/).filter(v => v);
-            command = (command || '').toLowerCase();
-
-            const isAccept = plugin.command instanceof RegExp ?
-                plugin.command.test(command) :
-                Array.isArray(plugin.command) ?
-                    plugin.command.some(cmd => cmd instanceof RegExp ? cmd.test(command) : cmd === command) :
-                    typeof plugin.command === 'string' ?
-                        plugin.command === command :
-                        false;
-
-            if (!isAccept) continue;
-
-            noPrefix = m.text.trim().substring(command.length).trim();
-            let text = args.join(' ');
-
-            if (noPrefix.length > 0) {
-               args = noPrefix.split(/\s+/).filter(v => v);
-            } else {
-               args = [];
-            }
-
-            m.plugin = name;
-
-            const fail = plugin.fail || global.dfail;
-            global.comando = command;
-
-            if (plugin.rowner && !isROwner) {
-                fail('rowner', m, conn);
-                return;
-            }
-            if (plugin.owner && !isOwner) {
-                fail('owner', m, conn);
-                return;
-            }
-
-            m.isCommand = true;
-            const xp = 'exp' in plugin ? parseInt(plugin.exp) : 10;
-            m.exp += xp;
-
-            const extra = {
-                usedPrefix, noPrefix, args, command, text, conn, user: global.db.data.users[m.sender], isROwner, isOwner, chatUpdate, __dirname: ___dirname, __filename
-            };
-
-            try {
-                await plugin.call(conn, m, extra);
             } catch (e) {
-                m.error = e;
-                console.error(`Error de ejecución en plugin ${name}:`, e);
-                const errorText = format(e).replace(new RegExp(Object.values(global.APIKeys).join('|'), 'g'), 'Administrador');
-                m.reply(errorText);
-            } finally {
-                if (typeof plugin.after === 'function') {
-                    try {
-                        await plugin.after.call(conn, m, extra);
-                    } catch (e) {
-                        console.error(`Error en plugin.after de ${name}:`, e);
+                console.error(`Error en plugin.before de ${name}:`, e);
+            }
+        }
+
+        if (typeof plugin !== 'function') continue;
+
+        const str = m.text.trim();
+        if (!str) continue;
+
+        let matched = false;
+        let command = '';
+        let usedPrefix = '';
+
+        if (plugin.command instanceof RegExp) {
+            const match = str.match(plugin.command);
+            if (match) {
+                matched = true;
+                command = match[0].toLowerCase();
+                usedPrefix = match[0];
+            }
+        } else if (Array.isArray(plugin.command)) {
+            for (const cmd of plugin.command) {
+                if (cmd instanceof RegExp) {
+                    const match = str.match(cmd);
+                    if (match) {
+                        matched = true;
+                        command = match[0].toLowerCase();
+                        usedPrefix = match[0];
+                        break;
                     }
+                } else if (str.toLowerCase().startsWith(cmd.toLowerCase())) {
+                    matched = true;
+                    command = cmd.toLowerCase();
+                    usedPrefix = cmd;
+                    break;
+                }
+            }
+        } else if (typeof plugin.command === 'string' && str.toLowerCase().startsWith(plugin.command.toLowerCase())) {
+            matched = true;
+            command = plugin.command.toLowerCase();
+            usedPrefix = plugin.command;
+        }
+
+        if (!matched) continue;
+
+        const body = str.slice(usedPrefix.length).trim();
+        const args = body.split(/\s+/).filter(Boolean);
+        const text = args.join(' ');
+
+        m.plugin = name;
+        m.isCommand = true;
+
+        const xp = 'exp' in plugin ? Math.max(parseInt(plugin.exp), 0) : 10;
+        m.exp += xp;
+
+        if (plugin.rowner && !isROwner) return global.dfail('rowner', m, conn);
+        if (plugin.owner && !isOwner) return global.dfail('owner', m, conn);
+
+        const extra = {
+            usedPrefix, command, args, text, conn, user, isROwner, isOwner, chatUpdate, __dirname: ___dirname, __filename
+        };
+
+        try {
+            await plugin.call(conn, m, extra);
+        } catch (e) {
+            m.error = e;
+            console.error(`Error ejecutando plugin ${name}:`, e);
+            const safeError = String(e).replace(new RegExp(Object.values(global.APIKeys || {}).join('|'), 'g'), '[KEY]');
+            await conn.reply(m.chat, safeError, m).catch(() => {});
+        } finally {
+            if (typeof plugin.after === 'function') {
+                try {
+                    await plugin.after.call(conn, m, extra);
+                } catch (e) {
+                    console.error(`Error en plugin.after de ${name}:`, e);
                 }
             }
         }
 
-    } catch (e) {
-        console.error('Error no capturado en handler:', e);
-    } finally {
-        if (m) {
-            const finalUser = global.db.data.users[m.sender];
-            if (finalUser) {
-                if (finalUser.muto) {
-                    await conn.sendMessage(m.chat, { delete: m.key });
-                }
-                finalUser.exp = (finalUser.exp || 0) + (m.exp || 0);
-                finalUser.coin = (finalUser.coin || 0) - (m.coin ? finalUser.coin * 1 : 0);
-            }
-
-            if (m.plugin) {
-                const stats = global.db.data.stats;
-                const now = Date.now();
-                stats[m.plugin] ||= { total: 0, success: 0, last: 0, lastSuccess: 0 };
-                const stat = stats[m.plugin];
-                stat.total += 1;
-                stat.last = now;
-                if (!m.error) {
-                    stat.success += 1;
-                    stat.lastSuccess = now;
-                }
-            }
-        }
+        return;
     }
 }
 
 global.dfail = (type, m, conn) => {
-    const messages = {
-        rowner: ``,
-        owner: `Solo con Deylin-Eliac hablo de eso w.`,
-    };
-    if (messages[type]) {
-        conn.reply(m.chat, messages[type], m);
-    }
+    const msg = {
+        rowner: '',
+        owner: 'Solo con Deylin-Eliac hablo de eso w.'
+    }[type] || '';
+    if (msg) conn.reply(m.chat, msg, m);
 };
 
-let file = global.__filename(import.meta.url, true);
-watchFile(file, async () => {
+const file = global.__filename(import.meta.url, true);
+watchFile(file, () => {
     unwatchFile(file);
-    console.log(chalk.magenta("Se actualizo 'handler.js'"));
-    if (global.conns && global.conns.length > 0) {
-        const users = global.conns.filter((conn) => conn.user && conn.ws.socket && conn.ws.socket.readyState !== ws.CLOSED);
-        for (const user of users) {
-            user.subreloadHandler(false);
-        }
+    console.log(chalk.magenta("Se actualizó 'handler.js'"));
+    if (global.conns?.length) {
+        global.conns
+            .filter(c => c.user && c.ws?.socket?.readyState !== ws.CLOSED)
+            .forEach(c => c.subreloadHandler?.(false));
     }
 });
