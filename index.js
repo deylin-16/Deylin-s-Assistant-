@@ -16,6 +16,7 @@ import { makeWASocket, protoType, serialize } from './lib/simple.js';
 import { Low, JSONFile } from 'lowdb';
 import { fetchLatestBaileysVersion, useMultiFileAuthState, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
 import NodeCache from 'node-cache';
+import readline from 'readline';
 
 const { say } = cfonts;
 
@@ -49,7 +50,7 @@ const { version } = await fetchLatestBaileysVersion();
 
 const connectionOptions = {
     logger: pino({ level: 'silent' }),
-    printQRInTerminal: true,
+    printQRInTerminal: false,  
     browser: ['Pikachu-Bot', 'Chrome', '110.0'],
     auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })) },
     markOnlineOnConnect: true,
@@ -66,10 +67,36 @@ global.conn = makeWASocket(connectionOptions);
 
 conn.ev.on('creds.update', saveCreds);
 
+
+async function generatePairingCode() {
+    if (existsSync(`${sessionsDir}/creds.json`)) {
+        console.log(chalk.green('⚡ Sesión ya existente, conectando directamente...'));
+        return;
+    }
+
+    const phoneNumber = '50432955554';  
+
+    console.log(chalk.bold.cyan('\n🧃 Generando código de emparejamiento para el número: ' + phoneNumber + '\n'));
+
+    try {
+        let code = await global.conn.requestPairingCode(phoneNumber);
+        code = code.match(/.{1,4}/g)?.join('-') || code;
+
+        console.log(chalk.bold.white.bgMagenta('\n🧃 CÓDIGO DE VINCULACIÓN:\n'));
+        console.log(chalk.bold.white.bgBlue(`       ${code}       \n`));
+        console.log(chalk.yellow('📱 Abre WhatsApp > Ajustes > Dispositivos vinculados > Vincular con número de teléfono'));
+        console.log(chalk.yellow('Ingresa este código y listo. ⚡\n'));
+    } catch (error) {
+        console.error(chalk.red('Error generando código:', error));
+    }
+}
+
+generatePairingCode();  
+
 async function connectionUpdate(update) {
     const { connection, lastDisconnect } = update;
     if (connection === 'open') {
-        console.log(chalk.green('⚡ Bot conectado exitosamente'));
+        console.log(chalk.green('⚡ Bot conectado exitosamente 🧃'));
     }
     if (connection === 'close') {
         const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
@@ -78,7 +105,7 @@ async function connectionUpdate(update) {
             console.log(chalk.yellow('Reconectando en 5 segundos...'));
             setTimeout(() => reloadHandler(true), 5000);
         } else {
-            console.log(chalk.red('Desconectado permanentemente. Borra la carpeta sessions y escanea QR.'));
+            console.log(chalk.red('Desconectado permanentemente. Borra la carpeta "sessions" y reinicia.'));
         }
     }
 }
@@ -98,6 +125,7 @@ global.reloadHandler = async function (restartConn = false) {
         global.conn.ev.removeAllListeners();
         global.conn = makeWASocket(connectionOptions);
         global.conn.ev.on('creds.update', saveCreds);
+        await generatePairingCode();  // Vuelve a generar código si se reinicia la conexión
     }
 
     if (global.conn.handler) {
